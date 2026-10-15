@@ -5,6 +5,8 @@ project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd -- "$project_dir"
 # Never make noise while testing; the engine still runs through fakesink.
 export HACKER_TERMINAL_AUDIO_SINK=fakesink
+# Headless runners have no accessibility bus; its warning must not be fatal.
+export NO_AT_BRIDGE=1
 
 python3 -m compileall -q hacker_terminal.py hackerterminal tests/test_core.py tests/gui_smoke.py
 bash -n run.sh install.sh tests/smoke.sh packaging/build-deb.sh
