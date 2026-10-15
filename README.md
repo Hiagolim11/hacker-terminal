@@ -87,7 +87,7 @@ Isso instala tudo somente para o usuário atual em `~/.local`, cria o comando `h
 Para instalar o pacote pronto no Kali, Debian ou Ubuntu:
 
 ```bash
-sudo apt install ./hacker-terminal_0.12.0_all.deb
+sudo apt install ./hacker-terminal_0.12.1_all.deb
 ```
 
 O uso de `apt` é recomendado porque ele resolve automaticamente as dependências. Para gerar novamente o pacote a partir do código-fonte:

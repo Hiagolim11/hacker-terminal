@@ -6,6 +6,7 @@ import array
 import json
 import os
 import tempfile
+import time
 import unittest
 import wave
 from pathlib import Path
@@ -664,7 +665,8 @@ class KeySoundTests(unittest.TestCase):
             with self.assertRaises(keysound.PackError):
                 keysound.load_pack(escape)
 
-    def test_engine_plays_without_repeat_and_reaches_the_sink(self) -> None:
+    def test_engine_keeps_playing_after_silence(self) -> None:
+        """Regression: each output stream used to play once and then go mute."""
         from hackerterminal.keysound import KeySoundEngine
         from hackerterminal.runtime import GLib, Gst
         engine = KeySoundEngine()
@@ -674,26 +676,78 @@ class KeySoundTests(unittest.TestCase):
         engine.configure("blue", 50, release=False)
         loop.run()
         self.assertIsNotNone(engine.bank)
-        self.assertEqual(len(engine.voices), 8)  # warmed up before the first key
-        arrived = []
-        for voice in engine.voices:
-            voice.sink.get_static_pad("sink").add_probe(
-                Gst.PadProbeType.BUFFER, lambda *_args: arrived.append(1) or Gst.PadProbeReturn.OK
-            )
-        engine.press(38, Gdk.KEY_a)
-        engine.press(38, Gdk.KEY_a)  # auto-repeat
-        engine.release(38, Gdk.KEY_a)  # release sound disabled
-        engine.press(39, Gdk.KEY_s)
-        GLib.timeout_add(300, loop.quit)
-        loop.run()
-        self.assertEqual(len(arrived), 2)
-        self.assertEqual(engine.voices[0].volume.get_property("volume"), 0.5)
+        self.assertIsNotNone(engine.mixer)  # warmed up before the first key
+        blocks: list[bool] = []
+
+        def probe(_pad, info):
+            buffer = info.get_buffer()
+            ok, mapped = buffer.map(Gst.MapFlags.READ)
+            if ok:
+                blocks.append(any(mapped.data))
+                buffer.unmap(mapped)
+            return Gst.PadProbeReturn.OK
+
+        engine.mixer.sink.get_static_pad("sink").add_probe(Gst.PadProbeType.BUFFER, probe)
+
+        def wait(milliseconds: int) -> None:
+            GLib.timeout_add(milliseconds, loop.quit)
+            loop.run()
+
+        def sounding_runs() -> int:
+            runs, previous = 0, False
+            for loud in blocks:
+                runs += loud and not previous
+                previous = loud
+            return runs
+
+        def wait_for_runs(expected: int) -> None:
+            context = GLib.MainContext.default()
+            deadline = time.monotonic() + 2
+            while sounding_runs() < expected and time.monotonic() < deadline:
+                context.iteration(False)
+                time.sleep(0.002)
+            wait(120)  # let the sound finish before the next key
+
+        wait(100)
+        for keycode in (38, 39, 40):
+            engine.press(keycode, Gdk.KEY_a)
+            engine.press(keycode, Gdk.KEY_a)  # auto-repeat stays silent
+            engine.release(keycode, Gdk.KEY_a)  # release sound disabled
+            wait_for_runs(keycode - 37)
+            wait(150)  # long silence between keys
+        self.assertEqual(sounding_runs(), 3)
+        self.assertEqual(engine.mixer.volume.get_property("volume"), 0.5)
+
         engine.last_activity -= 100
         engine._check_idle()
         self.assertTrue(engine.paused)
-        engine.press(40, Gdk.KEY_d)
+        engine.press(41, Gdk.KEY_d)
         self.assertFalse(engine.paused)
+        wait_for_runs(4)
+        self.assertEqual(sounding_runs(), 4)  # resumes after the idle pause
         engine.shutdown()
+
+    def test_mixer_overlaps_and_clips_safely(self) -> None:
+        from hackerterminal import keysound
+        from hackerterminal.runtime import Gst
+        Gst.init(None)
+        mixer = keysound._Mixer()
+        try:
+            loud = array.array("h", [30_000] * (keysound.CHUNK + 10))
+            mixer.add(loud)
+            mixer.add(loud)
+            block = array.array("h")
+            block.frombytes(mixer.next_block())
+            self.assertEqual(block[0], 32_767)  # clipped, not wrapped around
+            tail = array.array("h")
+            tail.frombytes(mixer.next_block())
+            self.assertEqual(len(tail), keysound.CHUNK)
+            self.assertEqual(tail[9], 32_767)
+            self.assertEqual(tail[10], 0)
+            self.assertFalse(mixer.busy())
+            self.assertEqual(mixer.next_block(), keysound.SILENCE)
+        finally:
+            mixer.stop()
 
     def test_broken_pack_falls_back_to_synth(self) -> None:
         from hackerterminal.keysound import KeySoundEngine

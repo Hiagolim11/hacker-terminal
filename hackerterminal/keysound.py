@@ -7,9 +7,9 @@ Two sources feed the same engine:
 * recorded sound packs, either Mechvibes packs (``config.json``) or a plain
   folder of ``press*.wav`` / ``release*.wav`` files.
 
-Everything is decoded to 48 kHz mono PCM up front. Playback pushes the
-buffer straight into an already-running GStreamer voice with ``sync=false``,
-so a key press costs one buffer push instead of starting a pipeline.
+Everything is decoded to 48 kHz mono PCM up front. Playback is a single
+continuous stream fed in 5 ms blocks; a key press only queues its samples,
+and they are mixed into the next block, so nothing starts or seeks a pipeline.
 """
 
 from __future__ import annotations
@@ -32,7 +32,6 @@ from .runtime import Gdk, GLib, Gst
 
 LOGGER = logging.getLogger(__name__)
 RATE = 48_000
-VOICES = 8
 IDLE_PAUSE_SECONDS = 15
 SYNTH_VERSION = 4
 VARIANTS = 8
@@ -224,7 +223,7 @@ class SoundBank:
         options = self.sounds.get((kind, size)) or self.sounds.get((kind, "normal"))
         if not options:
             return None
-        # Each key keeps a stable voice with a little live variation.
+        # Each key keeps a stable sound with a little live variation.
         index = (keycode * 7 + random.randrange(2)) % len(options)
         return options[index]
 
@@ -480,41 +479,102 @@ def _make_sink() -> object | None:
         if sink is None:
             continue
         properties = {prop.name for prop in sink.list_properties()}
-        if "sync" in properties:
-            sink.set_property("sync", False)  # render on arrival: no scheduling delay
         if "buffer-time" in properties:
-            sink.set_property("buffer-time", 20_000)
+            # ~15 ms of device buffering in 5 ms periods: low latency without
+            # underruns on a typical laptop PipeWire setup.
+            sink.set_property("buffer-time", 15_000)
             sink.set_property("latency-time", 5_000)
+        if name == "fakesink":
+            sink.set_property("sync", True)  # keep real-time pacing in tests
         return sink
     return None
 
 
-class _Voice:
+CHUNK = RATE // 200  # 5 ms per block
+SILENCE = bytes(CHUNK * 2)
+MAX_ACTIVE = 24
+
+
+class _Mixer:
+    """One continuous output stream; key sounds are mixed into it.
+
+    A PulseAudio/PipeWire stream that is fed sparse buffers stops playing
+    after its first underrun, so the stream is kept fed with 5 ms blocks of
+    silence and every new key sound is mixed into the next block.
+    """
+
     def __init__(self) -> None:
         self.pipeline = Gst.Pipeline.new(None)
         self.source = Gst.ElementFactory.make("appsrc", None)
         convert = Gst.ElementFactory.make("audioconvert", None)
         self.volume = Gst.ElementFactory.make("volume", None)
-        sink = _make_sink()
-        self.sink = sink
-        if None in (self.source, convert, self.volume, sink):
+        self.sink = _make_sink()
+        if None in (self.source, convert, self.volume, self.sink):
             raise RuntimeError("elementos de áudio indisponíveis")
-        self.source.set_property("caps", Gst.Caps.from_string(f"audio/x-raw,format=S16LE,rate={RATE},channels=1,layout=interleaved"))
+        self.source.set_property(
+            "caps",
+            Gst.Caps.from_string(f"audio/x-raw,format=S16LE,rate={RATE},channels=1,layout=interleaved"),
+        )
         self.source.set_property("format", Gst.Format.TIME)
         self.source.set_property("is-live", True)
-        self.source.set_property("do-timestamp", True)
-        for element in (self.source, convert, self.volume, sink):
+        self.source.set_property("max-bytes", CHUNK * 2)
+        self.source.set_property("emit-signals", True)
+        self.source.connect("need-data", self.on_need_data)
+        for element in (self.source, convert, self.volume, self.sink):
             self.pipeline.add(element)
         self.source.link(convert)
         convert.link(self.volume)
-        self.volume.link(sink)
+        self.volume.link(self.sink)
+        self.lock = threading.Lock()
+        self.active: list[list] = []  # [samples, position]
+        self.position = 0
+        self.blocks = 0
         self.pipeline.set_state(Gst.State.PLAYING)
 
     def set_volume(self, value: float) -> None:
         self.volume.set_property("volume", value)
 
-    def push(self, data: bytes) -> None:
-        self.source.emit("push-buffer", Gst.Buffer.new_wrapped(data))
+    def add(self, samples: Samples) -> None:
+        with self.lock:
+            if len(self.active) >= MAX_ACTIVE:
+                self.active.pop(0)
+            self.active.append([samples, 0])
+
+    def busy(self) -> bool:
+        with self.lock:
+            return bool(self.active)
+
+    def next_block(self) -> bytes:
+        with self.lock:
+            if not self.active:
+                return SILENCE
+            if len(self.active) == 1:
+                samples, position = self.active[0]
+                block = samples[position:position + CHUNK]
+                self.active[0][1] = position + CHUNK
+                if self.active[0][1] >= len(samples):
+                    self.active.clear()
+                if len(block) < CHUNK:
+                    block = block + array.array("h", bytes((CHUNK - len(block)) * 2))
+                return block.tobytes()
+            mixed = [0] * CHUNK
+            remaining = []
+            for item in self.active:
+                samples, position = item
+                for index, value in enumerate(samples[position:position + CHUNK]):
+                    mixed[index] += value
+                item[1] = position + CHUNK
+                if item[1] < len(samples):
+                    remaining.append(item)
+            self.active = remaining
+        return array.array("h", (32_767 if v > 32_767 else -32_768 if v < -32_768 else v for v in mixed)).tobytes()
+
+    def on_need_data(self, source, _length) -> None:
+        buffer = Gst.Buffer.new_wrapped(self.next_block())
+        buffer.pts = self.blocks * Gst.SECOND // 200
+        buffer.duration = Gst.SECOND // 200
+        self.blocks += 1
+        source.emit("push-buffer", buffer)
 
     def set_playing(self, playing: bool) -> None:
         # PAUSED corks the stream so PipeWire can suspend the audio device.
@@ -536,8 +596,7 @@ class KeySoundEngine:
         return cls._instance
 
     def __init__(self) -> None:
-        self.voices: list[_Voice] = []
-        self.next_voice = 0
+        self.mixer: _Mixer | None = None
         self.bank: SoundBank | None = None
         self.source_key: str | None = None
         self.volume = 0.7
@@ -554,29 +613,27 @@ class KeySoundEngine:
     def available(self) -> bool:
         return Gst is not None and not self.failed
 
-    def _ensure_voices(self) -> bool:
-        if self.voices or self.failed:
-            return bool(self.voices)
+    def _ensure_output(self) -> bool:
+        if self.mixer is not None or self.failed:
+            return self.mixer is not None
         if Gst is None:
             self.failed = True
             return False
         Gst.init(None)
         try:
-            self.voices = [_Voice() for _ in range(VOICES)]
-            for voice in self.voices:
-                voice.set_volume(self.volume)
+            self.mixer = _Mixer()
+            self.mixer.set_volume(self.volume)
         except RuntimeError as error:
             LOGGER.warning("som do teclado desativado: %s", error)
             self.failed = True
-            self.voices = []
-        return bool(self.voices)
+        return self.mixer is not None
 
     def configure(self, source: str, volume: int, release: bool) -> None:
         """Select ``red``/``brown``/``blue`` or ``pack:<name>``; loads in the background."""
         self.volume = max(0.0, min(1.0, volume / 100))
         self.release_enabled = release
-        for voice in self.voices:
-            voice.set_volume(self.volume)
+        if self.mixer is not None:
+            self.mixer.set_volume(self.volume)
         if source == self.source_key or source == self.loading_key:
             return
         self.loading_key = source
@@ -606,36 +663,31 @@ class KeySoundEngine:
             bank = synth_bank(DEFAULT_SWITCH)
         self.bank = bank
         self.source_key = source
-        self._ensure_voices()  # warm up now so the first key is not delayed
+        self._ensure_output()  # warm up now so the first key is not delayed
         self._arm_idle_timer()
         for callback in list(self.on_loaded):
             callback()
         return False
 
     def _play(self, samples: Samples | None) -> None:
-        if samples is None or not self._ensure_voices():
+        if samples is None or not self._ensure_output():
             return
-        data = samples.tobytes()
         self.last_activity = time.monotonic()
         if self.paused:
-            for item in self.voices:
-                item.set_playing(True)
+            self.mixer.set_playing(True)
             self.paused = False
+        self.mixer.add(samples)
         self._arm_idle_timer()
-        voice = self.voices[self.next_voice]
-        self.next_voice = (self.next_voice + 1) % len(self.voices)
-        voice.push(data)
 
     def _arm_idle_timer(self) -> None:
-        if not self.idle_source and self.voices and not self.paused:
+        if not self.idle_source and self.mixer is not None and not self.paused:
             self.last_activity = self.last_activity or time.monotonic()
             self.idle_source = GLib.timeout_add_seconds(5, self._check_idle)
 
     def _check_idle(self) -> bool:
-        if time.monotonic() - self.last_activity < IDLE_PAUSE_SECONDS:
+        if time.monotonic() - self.last_activity < IDLE_PAUSE_SECONDS or self.mixer.busy():
             return True
-        for voice in self.voices:
-            voice.set_playing(False)
+        self.mixer.set_playing(False)
         self.paused = True
         self.idle_source = 0
         return False
@@ -659,6 +711,6 @@ class KeySoundEngine:
         if self.idle_source:
             GLib.source_remove(self.idle_source)
             self.idle_source = 0
-        for voice in self.voices:
-            voice.stop()
-        self.voices = []
+        if self.mixer is not None:
+            self.mixer.stop()
+            self.mixer = None

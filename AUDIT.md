@@ -1,4 +1,4 @@
-# Auditoria técnica — versão 0.11.1
+# Auditoria técnica — versão 0.12.1
 
 Esta revisão cobre o aplicativo GTK/VTE, scripts, metadados e empacotamento. Os testes automatizados estão em `tests/smoke.sh`.
 
@@ -53,6 +53,8 @@ Esta revisão cobre o aplicativo GTK/VTE, scripts, metadados e empacotamento. Os
 - **Shell inválido sem saída:** um shell personalizado inexistente deixava a aba inutilizável; agora há fallback automático para o shell de login.
 
 - **Touchpad sem rolagem com efeitos ligados:** a chuva digital e as scanlines ficavam num filho de `Gtk.Overlay`, cuja janela GDK recebia a rolagem do X11 apesar de `set_overlay_pass_through`; o VTE não recebia nenhum evento. Os testes anteriores entregavam eventos sintéticos direto ao VTE e não cobriam o hit-test do X. Os efeitos passaram a ser desenhados após o VTE, e o teste agora usa eventos reais.
+
+- **Som do teclado mudo após poucas teclas (0.12.0):** cada voz `appsrc → pulsesink` recebia buffers esparsos; após o primeiro esvaziamento, a stream não tocava mais, com ou sem timestamps ou flush. Os testes usavam `fakesink` e um som por voz, e não detectaram. A saída virou uma stream contínua com mixer próprio; a correção foi validada gravando o monitor de um sink nulo do PipeWire durante digitação simulada.
 
 ## Verificações
 

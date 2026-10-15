@@ -9,7 +9,7 @@ export HACKER_TERMINAL_AUDIO_SINK=fakesink
 python3 -m compileall -q hacker_terminal.py hackerterminal tests/test_core.py tests/gui_smoke.py
 bash -n run.sh install.sh tests/smoke.sh packaging/build-deb.sh
 python3 hacker_terminal.py --help >/dev/null
-python3 hacker_terminal.py --version | grep -F "0.12.0" >/dev/null
+python3 hacker_terminal.py --version | grep -F "0.12.1" >/dev/null
 test "$(python3 hacker_terminal.py --list-themes | wc -l)" -eq 5
 test "$(python3 hacker_terminal.py --list-profiles | wc -l)" -eq 3
 python3 -m unittest -v tests.test_core
@@ -46,7 +46,7 @@ mkdir -p "$test_home"
 HOME="$test_home" XDG_DATA_HOME="$test_data" ./install.sh
 test -x "$test_home/.local/bin/hacker-terminal"
 HOME="$test_home" XDG_DATA_HOME="$test_data" "$test_home/.local/bin/hacker-terminal" --version \
-  | grep -F '0.12.0' >/dev/null
+  | grep -F '0.12.1' >/dev/null
 test -f "$test_data/hacker-terminal/hackerterminal/themes/matrix-green.ini"
 test -f "$test_data/applications/org.hackerterminal.HackerTerminal.desktop"
 test -f "$test_data/icons/hicolor/scalable/apps/hacker-terminal.svg"
@@ -62,7 +62,7 @@ if command -v dpkg-deb >/dev/null; then
     | grep -F './usr/lib/hacker-terminal/hackerterminal/themes/matrix-green.ini' >/dev/null
   dpkg-deb --extract "$artifact" "$test_dir/package-root"
   python3 "$test_dir/package-root/usr/lib/hacker-terminal/hacker_terminal.py" --version \
-    | grep -F '0.12.0' >/dev/null
+    | grep -F '0.12.1' >/dev/null
   desktop-file-validate \
     "$test_dir/package-root/usr/share/applications/org.hackerterminal.HackerTerminal.desktop"
 fi

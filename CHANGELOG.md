@@ -2,6 +2,13 @@
 
 Este projeto segue [Semantic Versioning](https://semver.org/).
 
+## 0.12.1
+
+- Corrige o som do teclado, que parava depois das primeiras teclas: cada uma das 8 streams de áudio tocava uma única vez, porque o PulseAudio/PipeWire não retoma uma stream alimentada por buffers esparsos depois do primeiro esvaziamento.
+- O áudio agora é uma única stream contínua alimentada em blocos de 5 ms; cada tecla é mixada no próximo bloco, com sobreposição e limitação de pico seguras.
+- Latência medida no PipeWire: ~7 ms até o bloco com o som e ~11 ms do dispositivo, ~18 ms no total (a estimativa de 10–15 ms da 0.12.0 era otimista).
+- Testes passam a verificar o conteúdo dos blocos que chegam ao sink em várias teclas separadas por silêncio e após a pausa por inatividade.
+
 ## 0.12.0
 
 - Som de teclado mecânico: switches Linear (estilo Red), Tátil (estilo Brown) e Clicky (estilo Blue), sintetizados a partir dos eventos físicos de cada switch: clique da jaqueta, bump tátil, fundo do curso, retorno da haste e estabilizadores.
@@ -9,7 +16,7 @@ Este projeto segue [Semantic Versioning](https://semver.org/).
 - Segurar uma tecla não repete o som, como num teclado real.
 - Pacotes gravados: importe pacotes Mechvibes (`config.json`, tipos *single* e *multi*) ou pastas com `press*.wav`/`release*.wav` para o som exato de um teclado real.
 - Nova aba **Preferências → Som do teclado** com switch, volume, som ao soltar, campo de teste com prévia ao vivo e importação de pacotes.
-- Motor de baixa latência: vozes GStreamer sempre prontas com `sync=false`, PCM pré-decodificado em memória, ~0,1 ms por tecla no programa e quantum de 256 amostras (~5 ms) no PipeWire. Remove a trava de 65 ms e o reinício de pipeline a cada tecla, que causavam o atraso.
+- Motor de baixa latência com PCM pré-decodificado em memória e ~0,1 ms por tecla no programa. Remove a trava de 65 ms e o reinício de pipeline a cada tecla, que causavam o atraso.
 - As vozes pausam após 15 s sem digitar, liberando o dispositivo de áudio; a retomada leva cerca de 6 ms.
 
 ## 0.11.1
