@@ -8,8 +8,8 @@
 
 GTK 3 · VTE · Python · sem Electron, sem navegador, sem telemetria
 
-[![CI](https://github.com/__OWNER__/hacker-terminal/actions/workflows/ci.yml/badge.svg)](https://github.com/__OWNER__/hacker-terminal/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/__OWNER__/hacker-terminal?color=29ff9a&label=vers%C3%A3o)](https://github.com/__OWNER__/hacker-terminal/releases/latest)
+[![CI](https://github.com/Hiagolim11/hacker-terminal/actions/workflows/ci.yml/badge.svg)](https://github.com/Hiagolim11/hacker-terminal/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Hiagolim11/hacker-terminal?color=29ff9a&label=vers%C3%A3o)](https://github.com/Hiagolim11/hacker-terminal/releases/latest)
 [![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-blue)](LICENSE)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776ab?logo=python&logoColor=white)
 ![GTK 3 + VTE](https://img.shields.io/badge/GTK%203-VTE%202.91-4a86cf?logo=gnome&logoColor=white)
@@ -174,7 +174,7 @@ Desenvolvido e testado no Kali Linux (XFCE em X11, PipeWire) com GTK 3.24 e VTE 
 
 ### Opção 1 — Pacote `.deb` (recomendado)
 
-Baixe o arquivo `hacker-terminal_*_all.deb` da [página de releases](https://github.com/__OWNER__/hacker-terminal/releases/latest) e instale com o `apt`, que resolve as dependências sozinho:
+Baixe o arquivo `hacker-terminal_*_all.deb` da [página de releases](https://github.com/Hiagolim11/hacker-terminal/releases/latest) e instale com o `apt`, que resolve as dependências sozinho:
 
 ```bash
 sudo apt install ./hacker-terminal_*_all.deb
@@ -187,7 +187,7 @@ O terminal aparece no menu de aplicativos e fica disponível como `hacker-termin
 ```bash
 sudo apt install python3 python3-gi gir1.2-gtk-3.0 gir1.2-vte-2.91 \
                  python3-gst-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good
-git clone https://github.com/__OWNER__/hacker-terminal.git
+git clone https://github.com/Hiagolim11/hacker-terminal.git
 cd hacker-terminal
 ./install.sh
 ```
@@ -202,7 +202,7 @@ Instala em `~/.local`, cria o comando `hacker-terminal` e adiciona o atalho ao m
 ### Opção 3 — Rodar direto do código-fonte
 
 ```bash
-git clone https://github.com/__OWNER__/hacker-terminal.git
+git clone https://github.com/Hiagolim11/hacker-terminal.git
 cd hacker-terminal
 ./run.sh
 ```
