@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.hackerterminal.HackerTerminal</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Hacker Terminal</name>
+  <summary>Native retro terminal for Linux</summary>
+  <summary xml:lang="pt-BR">Terminal retrô nativo para Linux</summary>
+  <description>
+    <p>A lightweight tabbed GTK/VTE terminal with history search, validated custom themes, persistent preferences, verified Powerline font support and optional retro visual effects.</p>
+  </description>
+  <description xml:lang="pt-BR">
+    <p>Um terminal GTK/VTE leve com abas, busca no histórico, temas personalizados validados, preferências persistentes, suporte Powerline verificado e efeitos visuais retrô opcionais.</p>
+  </description>
+  <launchable type="desktop-id">org.hackerterminal.HackerTerminal.desktop</launchable>
+  <provides>
+    <binary>hacker-terminal</binary>
+  </provides>
+  <categories>
+    <category>System</category>
+    <category>TerminalEmulator</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.10.0" date="2026-10-15"/>
+    <release version="0.9.0" date="2026-10-15"/>
+    <release version="0.8.4" date="2026-10-14"/>
+    <release version="0.8.3" date="2026-10-14"/>
+    <release version="0.8.2" date="2026-10-14"/>
+    <release version="0.8.1" date="2026-10-14"/>
+    <release version="0.8.0" date="2026-10-14"/>
+    <release version="0.7.0" date="2026-10-14"/>
+    <release version="0.6.1" date="2026-10-14"/>
+    <release version="0.6.0" date="2026-10-14"/>
+    <release version="0.5.0" date="2026-10-14"/>
+    <release version="0.4.0" date="2026-10-14"/>
+  </releases>
+</component>

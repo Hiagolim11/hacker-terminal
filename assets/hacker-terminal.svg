@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <rect x="8" y="8" width="240" height="240" rx="48" fill="#2de391"/>
+  <rect x="15" y="15" width="226" height="226" rx="41" fill="#02090b"/>
+
+  <!-- Circuit traces: recognizable at large sizes but quiet at launcher size. -->
+  <path d="M34 73h30v8H34zm158 0h30v8h-30zM34 177h30v8H34zm158 0h30v8h-30z" fill="#12664a"/>
+  <circle cx="31" cy="77" r="6" fill="#39d69a"/>
+  <circle cx="225" cy="77" r="6" fill="#39d69a"/>
+  <circle cx="31" cy="181" r="6" fill="#39d69a"/>
+  <circle cx="225" cy="181" r="6" fill="#39d69a"/>
+
+  <!-- Hooded hacker silhouette. -->
+  <path d="M128 39c-43 0-78 42-78 98 0 23 7 43 21 60l30-18h54l30 18c14-17 21-37 21-60 0-56-35-98-78-98z" fill="#0c3a30"/>
+  <path d="M128 53c-30 0-56 33-59 76l31-22h56l31 22c-3-43-29-76-59-76z" fill="#1b7258"/>
+  <path d="M96 104l32-24 32 24 19 31-24 39h-54l-24-39z" fill="#010606"/>
+  <path d="M92 129l25-9v12l-25 8zm72 0l-25-9v12l25 8z" fill="#72ffcb"/>
+
+  <!-- Terminal prompt badge. -->
+  <rect x="60" y="181" width="136" height="43" rx="13" fill="#061b17"/>
+  <path d="M79 193l20 10-20 10v-8l8-2-8-3z" fill="#72ffcb"/>
+  <rect x="108" y="207" width="30" height="6" rx="3" fill="#72ffcb"/>
+  <circle cx="177" cy="202" r="4" fill="#2de391"/>
+  <circle cx="177" cy="214" r="4" fill="#168f68"/>
+</svg>

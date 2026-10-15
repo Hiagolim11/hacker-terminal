@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Hacker Terminal
+GenericName=Terminal Emulator
+GenericName[pt_BR]=Emulador de terminal
+Comment=Native retro terminal for Linux
+Comment[pt_BR]=Terminal retrô nativo para Linux
+Exec=@EXEC@
+Icon=hacker-terminal
+Terminal=false
+Categories=System;TerminalEmulator;
+Keywords=terminal;kali;security;retro;vte;
+StartupNotify=true
