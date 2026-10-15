@@ -2,6 +2,13 @@
 
 Este projeto segue [Semantic Versioning](https://semver.org/).
 
+## 0.12.2
+
+- README reescrito: instalação passo a passo, guia de personalização, referência completa de configuração e linha de comando, arquitetura, motor de som, segurança e solução de problemas.
+- Capturas de tela dos cinco temas, dos painéis, da paleta e das preferências, e amostras de áudio dos switches em `docs/`.
+- O pacote `.deb` passa a recomendar `gstreamer1.0-plugins-base` e `gstreamer1.0-plugins-good`, necessários para o som do teclado.
+- O CI instala o GStreamer para executar os testes de som.
+
 ## 0.12.1
 
 - Corrige o som do teclado, que parava depois das primeiras teclas: cada uma das 8 streams de áudio tocava uma única vez, porque o PulseAudio/PipeWire não retoma uma stream alimentada por buffers esparsos depois do primeiro esvaziamento.
