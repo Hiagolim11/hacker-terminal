@@ -2,6 +2,16 @@
 
 Este projeto segue [Semantic Versioning](https://semver.org/).
 
+## 0.12.0
+
+- Som de teclado mecânico: switches Linear (estilo Red), Tátil (estilo Brown) e Clicky (estilo Blue), sintetizados a partir dos eventos físicos de cada switch: clique da jaqueta, bump tátil, fundo do curso, retorno da haste e estabilizadores.
+- Sons distintos para a descida e a subida da tecla e timbre mais grave para espaço, Enter, Backspace, Shift e Tab; cada tecla tem variações próprias.
+- Segurar uma tecla não repete o som, como num teclado real.
+- Pacotes gravados: importe pacotes Mechvibes (`config.json`, tipos *single* e *multi*) ou pastas com `press*.wav`/`release*.wav` para o som exato de um teclado real.
+- Nova aba **Preferências → Som do teclado** com switch, volume, som ao soltar, campo de teste com prévia ao vivo e importação de pacotes.
+- Motor de baixa latência: vozes GStreamer sempre prontas com `sync=false`, PCM pré-decodificado em memória, ~0,1 ms por tecla no programa e quantum de 256 amostras (~5 ms) no PipeWire. Remove a trava de 65 ms e o reinício de pipeline a cada tecla, que causavam o atraso.
+- As vozes pausam após 15 s sem digitar, liberando o dispositivo de áudio; a retomada leva cerca de 6 ms.
+
 ## 0.11.1
 
 - Corrige a rolagem com dois dedos no touchpad (e a roda do mouse) quando os efeitos visuais estão ligados, como no perfil Retro Hacker. A camada de efeitos ficava numa janela sobreposta que, no X11, capturava os eventos de rolagem mesmo com repasse ativado.

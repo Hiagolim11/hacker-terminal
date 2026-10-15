@@ -80,6 +80,9 @@ class Preferences:
     confirm_paste: bool = True
     bell_notify: bool = True
     shell: str = ""
+    key_switch: str = "brown"
+    key_volume: int = 70
+    key_release: bool = True
     shortcuts: dict[str, str] = field(default_factory=dict)
 
     def normalize(self) -> None:
@@ -92,6 +95,10 @@ class Preferences:
         self.cursor_blink = self.cursor_blink if self.cursor_blink in CURSOR_BLINK_MODES else "system"
         self.opacity = clamp(int(self.opacity), 30, 100)
         self.shell = (self.shell or "").strip()
+        switch = (self.key_switch or "").strip()
+        valid_pack = switch.startswith("pack:") and len(switch) > 5 and "/" not in switch[5:]
+        self.key_switch = switch if switch in ("red", "brown", "blue") or valid_pack else "brown"
+        self.key_volume = clamp(int(self.key_volume), 0, 100)
         self.shortcuts = {
             str(key).strip(): str(value).strip()
             for key, value in (self.shortcuts or {}).items()
@@ -144,6 +151,9 @@ class ConfigStore:
                 confirm_paste=self._boolean(section, "confirm_paste", True),
                 bell_notify=self._boolean(section, "bell_notify", True),
                 shell=section.get("shell", ""),
+                key_switch=section.get("key_switch", "brown"),
+                key_volume=self._integer(section, "key_volume", 70),
+                key_release=self._boolean(section, "key_release", True),
                 shortcuts=shortcuts,
             )
         except (OSError, configparser.Error, ValueError, UnicodeError) as error:
@@ -182,6 +192,9 @@ class ConfigStore:
             "confirm_paste": str(preferences.confirm_paste).lower(),
             "bell_notify": str(preferences.bell_notify).lower(),
             "shell": preferences.shell,
+            "key_switch": preferences.key_switch,
+            "key_volume": str(preferences.key_volume),
+            "key_release": str(preferences.key_release).lower(),
         }
         if parser.has_section("shortcuts"):
             parser.remove_section("shortcuts")

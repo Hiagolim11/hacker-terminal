@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from hackerterminal.audio import SoundPlayer
+from hackerterminal.keysound import KeySoundEngine
 from hackerterminal.actions import ActionStore, QuickAction
 from hackerterminal.config import AppConfig, ConfigStore, Preferences
 from hackerterminal.profiles import ProfileManager
@@ -107,6 +108,27 @@ def main() -> int:
             dialog.shortcuts_editor.reset_all()
             dialog.shortcuts_editor.set_binding("copy", "")
             dialog.cursor_shape.set_active_id("underline")
+            if not dialog.key_switch.set_active_id("blue"):
+                raise AssertionError("blue switch is not offered")
+            dialog.key_volume.set_value(40)
+            dialog.key_release.set_active(False)
+            engine = KeySoundEngine.shared()
+            deadline = time.monotonic() + 5
+            while (engine.source_key != "blue" or engine.loading_key) and time.monotonic() < deadline:
+                Gtk.main_iteration_do(False)
+            if engine.source_key != "blue" or engine.release_enabled:
+                raise AssertionError("sound preview did not follow the dialog")
+            if not dialog.key_status.get_text().startswith("Pronto"):
+                raise AssertionError("sound status was not updated")
+
+            class TestKey:
+                hardware_keycode = 52
+                keyval = Gdk.KEY_z
+
+            dialog.on_key_test_press(dialog.key_test, TestKey())
+            if 52 not in engine.pressed:
+                raise AssertionError("typing in the test field did not play a sound")
+            dialog.on_key_test_release(dialog.key_test, TestKey())
             dialog.shell.set_text("/definitely/missing-shell")
             if "Não encontrado" not in dialog.shell_status.get_text():
                 raise AssertionError("missing custom shell was not reported")
@@ -140,6 +162,20 @@ def main() -> int:
                 raise AssertionError("shortcut changes from the dialog were not persisted")
             if store.load().cursor_shape != "underline":
                 raise AssertionError("cursor preference was not persisted")
+            saved_sound = store.load()
+            if (saved_sound.key_switch, saved_sound.key_volume, saved_sound.key_release) != ("blue", 40, False):
+                raise AssertionError("keyboard sound preferences were not persisted")
+            preferences.sound = True
+            window.preferences_changed()
+            pane = window.get_active_terminal()
+            if not pane.sound_enabled:
+                raise AssertionError("keyboard sound was not enabled on the terminal")
+            pane.on_terminal_key_press(pane.terminal, TestKey())
+            if 52 not in engine.pressed:
+                raise AssertionError("terminal key press did not reach the sound engine")
+            pane.on_terminal_key_release(pane.terminal, TestKey())
+            preferences.sound = False
+            window.preferences_changed()
             if store.load().profile != "retro":
                 raise AssertionError("profile preference was not persisted")
             if window.active_theme.identifier != "cyberpunk-purple":

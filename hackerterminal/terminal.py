@@ -7,15 +7,14 @@ import os
 import re
 import shlex
 import shutil
-import time
 from pathlib import Path
 from typing import Callable
 from urllib.parse import unquote, urlparse
 
-from .audio import SoundPlayer
 from .config import AppConfig
 from .constants import DEFAULT_FONT_SIZE
 from .effects import EffectsLayer
+from .keysound import KeySoundEngine
 from .fonts import FontChoice, choose_font
 from .runtime import Gdk, Gio, GLib, Gtk, Pango, Vte
 from .themes import Theme
@@ -176,7 +175,6 @@ class SearchBar(Gtk.Revealer):
 class TerminalPane(Gtk.Box):
     def __init__(
         self,
-        key_sound: SoundPlayer,
         config: AppConfig,
         on_exit: Callable[["TerminalPane", int], None],
         on_title_changed: Callable[["TerminalPane", str], None],
@@ -185,14 +183,12 @@ class TerminalPane(Gtk.Box):
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.get_style_context().add_class("terminal-pane")
-        self.key_sound = key_sound
         self.config = config
         self.on_exit_callback = on_exit
         self.on_title_changed_callback = on_title_changed
         self.on_preferences_changed = on_preferences_changed
         self.on_bell_callback: Callable[["TerminalPane"], None] | None = None
         self.sound_enabled = config.preferences.sound
-        self.last_key_sound = 0.0
         self.shell_running = False
         self.closing = False
         self.child_pid = -1
@@ -219,6 +215,8 @@ class TerminalPane(Gtk.Box):
             | Gdk.EventMask.TOUCH_MASK
         )
         self.terminal.connect("key-press-event", self.on_terminal_key_press)
+        self.terminal.connect("key-release-event", self.on_terminal_key_release)
+        self.terminal.connect("focus-out-event", lambda *_args: KeySoundEngine.shared().reset_keys() or False)
         self.terminal.connect("scroll-event", self.on_terminal_scroll)
         self.terminal.connect("button-press-event", self.on_button_press)
         self.terminal.connect("button-release-event", self.on_pointer_release)
@@ -418,10 +416,13 @@ class TerminalPane(Gtk.Box):
 
     def on_terminal_key_press(self, terminal, event) -> bool:
         # Shortcuts are dispatched by the window so that users can rebind them.
-        now = time.monotonic()
-        if self.sound_enabled and now - self.last_key_sound > 0.065:
-            self.key_sound.play()
-            self.last_key_sound = now
+        if self.sound_enabled:
+            KeySoundEngine.shared().press(event.hardware_keycode, event.keyval)
+        return False
+
+    def on_terminal_key_release(self, _terminal, event) -> bool:
+        if self.sound_enabled:
+            KeySoundEngine.shared().release(event.hardware_keycode, event.keyval)
         return False
 
     def on_terminal_scroll(self, _terminal, event) -> bool:

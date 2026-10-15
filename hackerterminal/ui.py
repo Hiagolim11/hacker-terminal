@@ -6,6 +6,7 @@ import dataclasses
 import logging
 import os
 import shlex
+import shutil
 import tempfile
 import uuid
 from pathlib import Path
@@ -17,7 +18,15 @@ from .config import AppConfig, ConfigStore, Preferences
 from .constants import APP_ID, APP_NAME, VERSION
 from .constants import DEFAULT_THEME
 from .fonts import choose_font
-from .profiles import Profile, ProfileError, ProfileManager, profile_from_preferences
+from .keysound import (
+    SYNTH_SWITCHES,
+    KeySoundEngine,
+    list_packs,
+    load_pack,
+    packs_directory,
+    PackError,
+)
+from .profiles import Profile, ProfileError, ProfileManager, profile_from_preferences, slugify
 from .project import detect_project_context
 from .runtime import Gdk, Gio, GLib, Gtk, Pango
 from .session import SessionState, SessionStore, SessionTab
@@ -60,6 +69,35 @@ def header_button(icon_name: str, fallback: str, tooltip: str) -> Gtk.Button:
     button.set_focus_on_click(False)
     button.get_style_context().add_class("header-action")
     return button
+
+
+MAX_PACK_BYTES = 100 * 1024 * 1024
+
+
+def install_sound_pack(source: Path) -> str:
+    """Validate a sound pack and copy it into the user's pack folder."""
+    if packs_directory() in source.resolve().parents:
+        return source.name
+    total = sum(item.stat().st_size for item in source.rglob("*") if item.is_file())
+    if total > MAX_PACK_BYTES:
+        raise PackError("o pacote tem mais de 100 MB")
+    load_pack(source)  # raises PackError for anything unusable
+    base = slugify(source.name) or "pacote"
+    destination = packs_directory() / base
+    counter = 2
+    while destination.exists():
+        destination = packs_directory() / f"{base}-{counter}"
+        counter += 1
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(
+            source,
+            destination,
+            ignore=lambda folder, names: [name for name in names if (Path(folder) / name).is_symlink()],
+        )
+    except OSError as error:
+        raise PackError(f"não foi possível copiar o pacote: {error}") from error
+    return destination.name
 
 
 def shlex_first(command: str) -> str:
@@ -973,7 +1011,6 @@ class PreferencesDialog(Gtk.Dialog):
         appearance.heading("EFEITOS")
         appearance.field("Animação de abertura", self.boot)
         appearance.field("Efeitos visuais", self.effects)
-        appearance.field("Som do teclado", self.sound)
         appearance.hint("A animação de abertura é aplicada na próxima janela.")
         self.pages.append_page(appearance, Gtk.Label(label="Aparência"))
 
@@ -999,6 +1036,58 @@ class PreferencesDialog(Gtk.Dialog):
         terminal.field("Rolar ao digitar", self.scroll_on_keystroke)
         terminal.hint("Ctrl + roda do mouse também altera o tamanho da fonte.")
         self.pages.append_page(terminal, Gtk.Label(label="Terminal"))
+
+        # --- Som do teclado
+        sound_page = FormPage()
+        self.key_switch = Gtk.ComboBoxText()
+        self.refresh_key_sources(preferences.key_switch)
+        self.key_volume = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 5)
+        self.key_volume.set_value(preferences.key_volume)
+        self.key_volume.set_value_pos(Gtk.PositionType.RIGHT)
+        self.key_volume.set_digits(0)
+        self.key_release = Gtk.Switch(active=preferences.key_release)
+        pack_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        import_pack = Gtk.Button(label="Importar pacote…")
+        import_pack.set_tooltip_text("Pasta de um pacote Mechvibes (config.json) ou com press.wav / release.wav")
+        import_pack.connect("clicked", self.import_sound_pack)
+        open_packs = Gtk.Button(label="Abrir pasta")
+        open_packs.connect("clicked", self.open_packs_folder)
+        pack_actions.pack_start(import_pack, False, False, 0)
+        pack_actions.pack_start(open_packs, False, False, 0)
+        self.key_test = Gtk.Entry()
+        self.key_test.set_placeholder_text("Digite aqui para ouvir…")
+        self.key_test.connect("key-press-event", self.on_key_test_press)
+        self.key_test.connect("key-release-event", self.on_key_test_release)
+        sound_page.heading("SOM DO TECLADO")
+        sound_page.field("Ativar", self.sound)
+        sound_page.field("Switch", self.key_switch)
+        self.key_status = sound_page.hint("", column=1, width=1)
+        sound_page.field("Volume", self.key_volume)
+        sound_page.field("Som ao soltar a tecla", self.key_release, "Toca o retorno da haste (top-out) ao soltar.")
+        sound_page.heading("TESTAR")
+        sound_page.full(self.key_test)
+        sound_page.hint(
+            "Os sons tocam na descida e na subida de cada tecla, sem trava entre teclas; "
+            "segurar uma tecla não repete o som, como num teclado real."
+        )
+        sound_page.heading("PACOTES GRAVADOS")
+        sound_page.full(pack_actions)
+        sound_page.hint(
+            "Para o som exato de um teclado real, importe uma gravação: pacotes Mechvibes "
+            "(com config.json) ou uma pasta com press.wav, release.wav, space-press.wav etc."
+        )
+        self.pages.append_page(sound_page, Gtk.Label(label="Som do teclado"))
+        engine = KeySoundEngine.shared()
+        engine.on_loaded.append(self.update_key_status)
+        self.connect("destroy", lambda *_: engine.on_loaded.remove(self.update_key_status)
+                     if self.update_key_status in engine.on_loaded else None)
+        for widget, signal in (
+            (self.key_switch, "changed"),
+            (self.key_volume, "value-changed"),
+            (self.key_release, "notify::active"),
+        ):
+            widget.connect(signal, lambda *_: self.preview_key_sound())
+        self.preview_key_sound()
 
         # --- Atalhos
         self.shortcuts_editor = ShortcutsEditor(preferences.shortcuts)
@@ -1090,6 +1179,68 @@ class PreferencesDialog(Gtk.Dialog):
             self.shell_status.set_text(f"Não encontrado; será usado {argv[0]}.")
         else:
             self.shell_status.set_text("Executa: " + " ".join(argv))
+
+    def refresh_key_sources(self, selected: str) -> None:
+        self.key_switch.remove_all()
+        for identifier, label in SYNTH_SWITCHES.items():
+            self.key_switch.append(identifier, f"{label} — sintetizado")
+        for pack in list_packs():
+            self.key_switch.append(f"pack:{pack.identifier}", f"{pack.name} — gravado")
+        if not self.key_switch.set_active_id(selected):
+            self.key_switch.set_active_id("brown")
+
+    def preview_key_sound(self) -> None:
+        source = self.key_switch.get_active_id() or "brown"
+        self.key_status.set_text("Carregando…")
+        KeySoundEngine.shared().configure(source, int(self.key_volume.get_value()), self.key_release.get_active())
+        self.update_key_status()
+
+    def update_key_status(self) -> None:
+        engine = KeySoundEngine.shared()
+        if not engine.available():
+            self.key_status.set_text("Áudio indisponível: instale o GStreamer (python3-gst-1.0).")
+        elif engine.loading_key is not None:
+            self.key_status.set_text("Carregando…")
+        elif engine.last_error:
+            self.key_status.set_text(f"Pacote inválido: {engine.last_error}. Usando o som sintetizado.")
+        elif engine.bank is not None:
+            self.key_status.set_text(f"Pronto: {engine.bank.name}")
+
+    def on_key_test_press(self, _entry, event) -> bool:
+        KeySoundEngine.shared().press(event.hardware_keycode, event.keyval)
+        return False
+
+    def on_key_test_release(self, _entry, event) -> bool:
+        KeySoundEngine.shared().release(event.hardware_keycode, event.keyval)
+        return False
+
+    def import_sound_pack(self, _button) -> None:
+        chooser = Gtk.FileChooserDialog(
+            title="Importar pacote de sons",
+            transient_for=self,
+            action=Gtk.FileChooserAction.SELECT_FOLDER,
+        )
+        chooser.add_buttons("Cancelar", Gtk.ResponseType.CANCEL, "Importar", Gtk.ResponseType.OK)
+        response = chooser.run()
+        folder = chooser.get_filename()
+        chooser.destroy()
+        if response != Gtk.ResponseType.OK or not folder:
+            return
+        try:
+            identifier = install_sound_pack(Path(folder))
+        except PackError as error:
+            show_error(self, "Pacote de sons inválido", str(error))
+            return
+        self.refresh_key_sources(f"pack:{identifier}")
+
+    @staticmethod
+    def open_packs_folder(_button) -> None:
+        folder = packs_directory()
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            Gio.AppInfo.launch_default_for_uri(folder.as_uri(), None)
+        except (OSError, GLib.Error) as error:
+            LOGGER.warning("não foi possível abrir %s: %s", folder, error)
 
     def update_theme_buttons(self) -> None:
         custom = self.theme_manager.is_custom(self.selected_theme())
@@ -1239,6 +1390,9 @@ class PreferencesDialog(Gtk.Dialog):
         target.boot = self.boot.get_active()
         target.effects = self.effects.get_active()
         target.sound = self.sound.get_active()
+        target.key_switch = self.key_switch.get_active_id() or "brown"
+        target.key_volume = int(self.key_volume.get_value())
+        target.key_release = self.key_release.get_active()
         target.panel_visible = self.panel.get_active()
         target.restore_session = self.restore_session.get_active()
         target.shell = self.shell.get_text().strip()
@@ -1310,7 +1464,8 @@ class HackerTerminal(Gtk.ApplicationWindow):
         self.connect("destroy", self.on_window_destroy)
         self.set_titlebar(self.build_header())
         self.update_header_tooltips()
-        self.boot_sound, self.key_sound = self.build_sounds()
+        self.boot_sound = self.build_sounds()
+        self.configure_key_sound()
 
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, transition_duration=240)
         self.add(self.stack)
@@ -1463,7 +1618,13 @@ class HackerTerminal(Gtk.ApplicationWindow):
             self.save_session()
         return True
 
-    def build_sounds(self) -> tuple[SoundPlayer, SoundPlayer]:
+    def configure_key_sound(self) -> None:
+        if self.preferences.sound:
+            KeySoundEngine.shared().configure(
+                self.preferences.key_switch, self.preferences.key_volume, self.preferences.key_release
+            )
+
+    def build_sounds(self) -> SoundPlayer:
         cache_setting = os.environ.get("XDG_CACHE_HOME")
         cache_home = Path(cache_setting).expanduser() if cache_setting else Path.home() / ".cache"
         sound_dir = cache_home / APP_NAME
@@ -1474,8 +1635,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
             self.sound_tempdir = tempfile.TemporaryDirectory(prefix=f"{APP_NAME}-")
             sound_dir = Path(self.sound_tempdir.name)
         boot = make_tone(sound_dir / "boot.wav", [(196, 0.09), (294, 0.09), (392, 0.12), (587, 0.20)])
-        key = make_tone(sound_dir / "key.wav", [(760, 0.018)], volume=0.07)
-        return SoundPlayer(boot, 0.34), SoundPlayer(key, 0.14)
+        return SoundPlayer(boot, 0.34)
 
     def build_workspace(self) -> Gtk.Widget:
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
@@ -1619,7 +1779,6 @@ class HackerTerminal(Gtk.ApplicationWindow):
     def create_terminal(self, command: tuple[str, ...], directory: Path) -> TerminalPane:
         runtime = AppConfig(self.preferences, command, directory)
         pane = TerminalPane(
-            self.key_sound,
             runtime,
             self.on_terminal_exit,
             self.on_terminal_title_changed,
@@ -1835,6 +1994,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
             dialog.apply()
             self.preferences_changed()
         dialog.destroy()
+        self.configure_key_sound()  # drop any preview the dialog configured
 
     def show_action_editor(self) -> None:
         dialog = ActionEditorDialog(self, self.action_store)
@@ -1921,6 +2081,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
         self.shortcuts = ShortcutMap(self.preferences.shortcuts)
         self.update_header_tooltips()
         self.sync_action_store()
+        self.configure_key_sound()
         if not self.store.save(self.preferences):
             LOGGER.warning("as preferências não puderam ser salvas em %s", self.store.path)
         for terminal in self.terminals():

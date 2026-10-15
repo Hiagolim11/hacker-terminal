@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import array
+import json
 import os
 import tempfile
 import unittest
+import wave
 from pathlib import Path
 from unittest.mock import patch
 
@@ -542,3 +545,176 @@ class CustomProfileTests(unittest.TestCase):
             path.write_text(profile_to_ini(profile), encoding="utf-8")
             loaded = load_profile(path)
             self.assertEqual((loaded.name, loaded.description, loaded.shell), ("Uso 100%", "linha quebrada", "env X=%y bash"))
+
+
+def write_wav(path: Path, samples: list[int], rate: int = 48_000) -> None:
+    with wave.open(str(path), "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(rate)
+        handle.writeframes(array.array("h", samples).tobytes())
+
+
+class KeySoundTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.cache = tempfile.TemporaryDirectory()
+        self.env = patch.dict(os.environ, {"XDG_CACHE_HOME": self.cache.name, "HACKER_TERMINAL_AUDIO_SINK": "fakesink"})
+        self.env.start()
+
+    def tearDown(self) -> None:
+        self.env.stop()
+        self.cache.cleanup()
+
+    def test_synthesis_is_deterministic_and_bounded(self) -> None:
+        from hackerterminal import keysound
+        first = keysound.synthesize("blue", "press", "normal", 3)
+        self.assertEqual(first, keysound.synthesize("blue", "press", "normal", 3))
+        self.assertNotEqual(first, keysound.synthesize("blue", "press", "normal", 4))
+        self.assertEqual(len(first), int(keysound.RATE * 0.075))
+        self.assertLessEqual(max(abs(value) for value in first), 32_767)
+        self.assertGreater(len(keysound.synthesize("red", "press", "space", 1)), len(first))
+
+    def test_switches_have_distinct_character(self) -> None:
+        import math
+        from hackerterminal import keysound
+
+        def mean_frequency(samples):
+            energy = sum(value * value for value in samples)
+            slope = sum((samples[i] - samples[i - 1]) ** 2 for i in range(1, len(samples)))
+            return math.sqrt(slope / energy) * keysound.RATE / (2 * math.pi)
+
+        def average(switch, kind="press", size="normal"):
+            return sum(mean_frequency(keysound.synthesize(switch, kind, size, seed)) for seed in range(3)) / 3
+
+        self.assertGreater(average("blue"), 1.8 * average("red"))  # the click jacket is bright
+        self.assertGreater(average("red", "release"), average("red"))  # top-out is higher than bottom-out
+        self.assertLess(average("red", size="space"), average("red"))  # big keys are deeper
+
+        brown = keysound.synthesize("brown", "press", "normal", 5)
+        peak = max(abs(value) for value in brown)
+        onset = next(index for index, value in enumerate(brown) if abs(value) > 0.5 * peak)
+        self.assertGreater(onset / keysound.RATE * 1000, 4)  # tactile tick, then bottom-out
+
+    def test_synth_bank_cache_round_trip(self) -> None:
+        from hackerterminal import keysound
+        built = keysound.synth_bank("red")
+        cached = keysound.synth_bank("red")
+        self.assertEqual(built.sounds, cached.sounds)
+        self.assertEqual(len(cached.sounds), len(keysound.KINDS) * len(keysound.SIZES))
+        (Path(self.cache.name) / "hacker-terminal" / "keysounds" / f"red-v{keysound.SYNTH_VERSION}.pcm").write_bytes(b"junk")
+        self.assertEqual(keysound.synth_bank("red").sounds, built.sounds)  # corrupt cache is rebuilt
+
+    def test_key_sizes(self) -> None:
+        from hackerterminal.keysound import key_size
+        self.assertEqual(key_size(Gdk.KEY_space), "space")
+        self.assertEqual(key_size(Gdk.KEY_Return), "enter")
+        self.assertEqual(key_size(Gdk.KEY_BackSpace), "large")
+        self.assertEqual(key_size(Gdk.KEY_a), "normal")
+
+    def test_folder_pack(self) -> None:
+        from hackerterminal import keysound
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            write_wav(folder / "press1.wav", [1000] * 480)
+            write_wav(folder / "press2.wav", [2000] * 480, rate=44_100)
+            write_wav(folder / "space-press.wav", [3000] * 480)
+            write_wav(folder / "release.wav", [4000] * 480)
+            (folder / "notes.txt").write_text("ignored", encoding="utf-8")
+            bank = keysound.load_pack(folder)
+            self.assertEqual(len(bank.sounds[("press", "normal")]), 2)
+            self.assertAlmostEqual(len(bank.sounds[("press", "normal")][1]), 522, delta=4)  # resampled to 48 kHz
+            self.assertIn(("press", "space"), bank.sounds)
+            self.assertIsNotNone(bank.pick("release", "enter", 40))  # falls back to the normal size
+            empty = folder / "empty"
+            empty.mkdir()
+            for invalid in (empty, folder / "missing"):
+                with self.assertRaises(keysound.PackError):
+                    keysound.load_pack(invalid)
+
+    def test_mechvibes_single_and_multi_packs(self) -> None:
+        from hackerterminal import keysound
+        with tempfile.TemporaryDirectory() as directory:
+            single = Path(directory) / "single"
+            single.mkdir()
+            write_wav(single / "sound.wav", [100] * 4800 + [200] * 4800)
+            (single / "config.json").write_text(json.dumps({
+                "name": "Cherry  MX Blue", "key_define_type": "single", "sound": "sound.wav",
+                "defines": {"30": [0, 100], "57": [100, 100], "61000": [0, 50], "bad": [0, 1]},
+            }), encoding="utf-8")
+            bank = keysound.load_pack(single)
+            self.assertEqual(bank.name, "Cherry MX Blue")
+            self.assertEqual(bank.pick("press", "normal", 30 + 8)[0], 100)  # KEY_A
+            self.assertEqual(bank.pick("press", "space", 57 + 8)[0], 200)   # KEY_SPACE
+            self.assertEqual(len(bank.pick("press", "normal", 103 + 8)), 2400)  # KEY_UP via uiohook code
+            self.assertIsNone(bank.pick("release", "normal", 38))
+
+            multi = Path(directory) / "multi"
+            multi.mkdir()
+            write_wav(multi / "a.wav", [7] * 100)
+            (multi / "config.json").write_text(json.dumps({
+                "key_define_type": "multi", "defines": {"30": "a.wav", "31": None},
+            }), encoding="utf-8")
+            self.assertEqual(keysound.load_pack(multi).pick("press", "normal", 38)[0], 7)
+
+            escape = Path(directory) / "escape"
+            escape.mkdir()
+            (escape / "config.json").write_text(json.dumps({
+                "key_define_type": "multi", "defines": {"30": "../single/sound.wav"},
+            }), encoding="utf-8")
+            with self.assertRaises(keysound.PackError):
+                keysound.load_pack(escape)
+
+    def test_engine_plays_without_repeat_and_reaches_the_sink(self) -> None:
+        from hackerterminal.keysound import KeySoundEngine
+        from hackerterminal.runtime import GLib, Gst
+        engine = KeySoundEngine()
+        loop = GLib.MainLoop()
+        engine.on_loaded.append(loop.quit)
+        GLib.timeout_add_seconds(10, loop.quit)
+        engine.configure("blue", 50, release=False)
+        loop.run()
+        self.assertIsNotNone(engine.bank)
+        self.assertEqual(len(engine.voices), 8)  # warmed up before the first key
+        arrived = []
+        for voice in engine.voices:
+            voice.sink.get_static_pad("sink").add_probe(
+                Gst.PadProbeType.BUFFER, lambda *_args: arrived.append(1) or Gst.PadProbeReturn.OK
+            )
+        engine.press(38, Gdk.KEY_a)
+        engine.press(38, Gdk.KEY_a)  # auto-repeat
+        engine.release(38, Gdk.KEY_a)  # release sound disabled
+        engine.press(39, Gdk.KEY_s)
+        GLib.timeout_add(300, loop.quit)
+        loop.run()
+        self.assertEqual(len(arrived), 2)
+        self.assertEqual(engine.voices[0].volume.get_property("volume"), 0.5)
+        engine.last_activity -= 100
+        engine._check_idle()
+        self.assertTrue(engine.paused)
+        engine.press(40, Gdk.KEY_d)
+        self.assertFalse(engine.paused)
+        engine.shutdown()
+
+    def test_broken_pack_falls_back_to_synth(self) -> None:
+        from hackerterminal.keysound import KeySoundEngine
+        from hackerterminal.runtime import GLib
+        engine = KeySoundEngine()
+        loop = GLib.MainLoop()
+        engine.on_loaded.append(loop.quit)
+        GLib.timeout_add_seconds(10, loop.quit)
+        engine.configure("pack:does-not-exist", 70, True)
+        loop.run()
+        self.assertIsNotNone(engine.last_error)
+        self.assertIsNotNone(engine.bank)
+        engine.shutdown()
+
+    def test_key_sound_preferences_round_trip_and_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = ConfigStore(Path(directory) / "config.ini")
+            store.save(Preferences(key_switch="pack:cherry-mx-blue", key_volume=35, key_release=False))
+            loaded = store.load()
+            self.assertEqual((loaded.key_switch, loaded.key_volume, loaded.key_release), ("pack:cherry-mx-blue", 35, False))
+        for bad in ("purple", "pack:", "pack:../../etc"):
+            preferences = Preferences(key_switch=bad, key_volume=500)
+            preferences.normalize()
+            self.assertEqual((preferences.key_switch, preferences.key_volume), ("brown", 100))

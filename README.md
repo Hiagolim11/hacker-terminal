@@ -23,6 +23,7 @@ Um terminal retrô, leve e nativo para Linux, construído com Python, GTK 3 e VT
 - atalhos de teclado totalmente configuráveis, com detecção de conflitos;
 - editor visual de temas com cores da interface, do terminal e paleta ANSI;
 - cursor, opacidade, shell, cópia ao selecionar e rolagem configuráveis;
+- som de teclado mecânico (Red, Brown, Blue ou pacotes gravados) com baixa latência;
 - confirmação de colagem perigosa, aviso de bell e gravação automática da sessão;
 - log rotativo de diagnóstico e modo `--debug`;
 - preferências persistentes em `~/.config/hacker-terminal/config.ini`;
@@ -86,7 +87,7 @@ Isso instala tudo somente para o usuário atual em `~/.local`, cria o comando `h
 Para instalar o pacote pronto no Kali, Debian ou Ubuntu:
 
 ```bash
-sudo apt install ./hacker-terminal_0.11.1_all.deb
+sudo apt install ./hacker-terminal_0.12.0_all.deb
 ```
 
 O uso de `apt` é recomendado porque ele resolve automaticamente as dependências. Para gerar novamente o pacote a partir do código-fonte:
@@ -133,6 +134,21 @@ fullscreen =
 ```
 
 Use `./run.sh --list-shortcuts` para ver os identificadores e as teclas em uso.
+
+### Som de teclado mecânico
+
+Em **Preferências → Som do teclado**, ative o som e escolha o switch:
+
+- **Linear (estilo Red):** só o fundo do curso e o retorno, sem clique.
+- **Tátil (estilo Brown):** um leve tique do bump tátil antes do fundo do curso.
+- **Clicky (estilo Blue):** o clique brilhante da jaqueta na descida e na subida.
+
+Use o campo **Digite aqui para ouvir…** para testar antes de salvar. Os sons sintetizados são aproximações modeladas a partir da física dos switches. Para o som exato de um teclado real, use **Importar pacote…** com:
+
+- um pacote do [Mechvibes](https://mechvibes.com/) (pasta com `config.json`), ou
+- uma pasta com gravações nomeadas `press.wav`, `press2.wav`, `release.wav`, `space-press.wav`, `enter-press.wav`, `large-press.wav` etc. (WAV, OGG, MP3, FLAC ou Opus).
+
+Os pacotes ficam em `~/.local/share/hacker-terminal/soundpacks/`.
 
 ### Perfis personalizados
 
