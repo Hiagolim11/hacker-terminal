@@ -33,6 +33,8 @@ install -d \
   "$package_root/usr/share/metainfo"
 
 install -m 755 "$project_dir/hacker_terminal.py" "$package_root/usr/lib/$package/hacker_terminal.py"
+install -D -m 755 "$project_dir/bin/ht-open" "$package_root/usr/lib/$package/bin/ht-open"
+ln -s "../lib/$package/bin/ht-open" "$package_root/usr/bin/ht-open"
 for source in "$project_dir"/hackerterminal/*.py; do
   install -m 644 "$source" "$package_root/usr/lib/$package/hackerterminal/$(basename "$source")"
 done

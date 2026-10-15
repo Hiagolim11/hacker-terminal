@@ -7,6 +7,7 @@ import logging
 import os
 import shlex
 import shutil
+import signal
 import tempfile
 import uuid
 from pathlib import Path
@@ -18,6 +19,8 @@ from .config import AppConfig, ConfigStore, Preferences
 from .constants import APP_ID, APP_NAME, VERSION
 from .constants import DEFAULT_THEME
 from .fonts import choose_font
+from .documents import kind_of
+from .openserver import SOCKET_ENV, OpenServer
 from .keysound import (
     SYNTH_SWITCHES,
     KeySoundEngine,
@@ -1446,6 +1449,9 @@ class HackerTerminal(Gtk.ApplicationWindow):
         self.toolbar_buttons: list[Gtk.Widget] = []
         self.panel_auto_hidden = False
         self.panel_peek = False
+        self.viewers: dict[Gtk.Widget, TerminalPane | None] = {}
+        self.open_server = OpenServer(self.open_file_from_pane)
+        self.open_socket = self.open_server.start()
         self.saved_session = (
             self.session_store.load()
             if self.preferences.restore_session and not self.config.command
@@ -1516,8 +1522,19 @@ class HackerTerminal(Gtk.ApplicationWindow):
             button.set_tooltip_text(f"{button.header_tooltip} ({shortcut})")
 
     def shortcut_handlers(self) -> dict[str, Callable[[], object]]:
+        viewer_actions = {
+            ("copy",): lambda viewer: viewer.copy(),
+            ("zoom", 1): lambda viewer: viewer.step_zoom(1),
+            ("zoom", -1): lambda viewer: viewer.step_zoom(-1),
+            ("zoom", 0): lambda viewer: viewer.set_zoom(1.0),
+        }
+
         def on_terminal(method: str, *args) -> Callable[[], object]:
             def run() -> object:
+                viewer = self.active_viewer()
+                if viewer is not None:
+                    action = viewer_actions.get((method, *args))
+                    return action(viewer) if action is not None else None
                 pane = self.get_active_terminal()
                 return getattr(pane, method)(*args) if pane is not None else None
 
@@ -1754,8 +1771,22 @@ class HackerTerminal(Gtk.ApplicationWindow):
         frame.add(pane)
         self.page_panes[frame] = [pane]
         self.active_panes[frame] = pane
+        tab_box, label = self.make_tab_label("Terminal", None, lambda: self.close_page(frame))
+        page = self.notebook.append_page(frame, tab_box)
+        self.notebook.set_tab_reorderable(frame, True)
+        self.tab_labels[pane] = label
+        frame.show_all()
+        self.notebook.set_current_page(page)
+        self.update_status()
+        pane.spawn()
+
+    def make_tab_label(
+        self, text: str, icon_name: str | None, on_close: Callable[[], object]
+    ) -> tuple[Gtk.Box, Gtk.Label]:
         tab_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
-        label = Gtk.Label(label="Terminal")
+        if icon_name is not None:
+            tab_box.pack_start(Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.MENU), False, False, 0)
+        label = Gtk.Label(label=text)
         label.set_ellipsize(Pango.EllipsizeMode.END)
         label.set_max_width_chars(18)
         label.set_width_chars(8)
@@ -1764,17 +1795,83 @@ class HackerTerminal(Gtk.ApplicationWindow):
         close_button.set_relief(Gtk.ReliefStyle.NONE)
         close_button.set_tooltip_text("Fechar aba")
         close_button.get_style_context().add_class("tab-close")
-        close_button.connect("clicked", lambda *_: self.close_page(frame))
+        close_button.connect("clicked", lambda *_: on_close())
         tab_box.pack_start(label, True, True, 0)
         tab_box.pack_start(close_button, False, False, 0)
         tab_box.show_all()
-        page = self.notebook.append_page(frame, tab_box)
-        self.notebook.set_tab_reorderable(frame, True)
-        self.tab_labels[pane] = label
-        frame.show_all()
+        return tab_box, label
+
+    # ------------------------------------------------------------ viewer
+
+    def active_viewer(self):
+        page = self.notebook.get_current_page()
+        widget = self.notebook.get_nth_page(page) if page >= 0 else None
+        return widget if widget in self.viewers else None
+
+    def pane_by_id(self, pane_id: str | None) -> TerminalPane | None:
+        return next((pane for pane in self.terminals() if pane.pane_id == pane_id), None)
+
+    def open_file_from_pane(self, path: Path, pane_id: str | None) -> None:
+        self.open_file(path, self.pane_by_id(pane_id) or self.get_active_terminal())
+
+    def open_file(self, path: Path, origin: TerminalPane | None = None) -> None:
+        """Show an image or spreadsheet in a viewer tab next to its terminal."""
+        if self.closing_window:
+            return
+        if kind_of(path) is None:
+            self.show_info(f"O visualizador abre imagens e planilhas (CSV, TSV, XLSX, ODS).\n\n{path.name} não é um desses formatos.")
+            return
+        for viewer in self.viewers:
+            if viewer.path == path:
+                viewer.load()
+                self.notebook.set_current_page(self.notebook.page_num(viewer))
+                return
+        from .viewer import FileViewer  # imported on first use only
+
+        viewer = FileViewer(path, self.close_viewer)
+        self.viewers[viewer] = origin
+        icon = "image-x-generic-symbolic" if viewer.kind == "image" else "x-office-spreadsheet-symbolic"
+        tab_box, label = self.make_tab_label(path.name, icon, lambda: self.close_viewer(viewer))
+        label.set_tooltip_text(str(path))
+        frame = self.frame_for_pane(origin) if origin is not None else None
+        position = self.notebook.page_num(frame) + 1 if frame is not None else -1
+        page = self.notebook.insert_page(viewer, tab_box, position)
+        self.notebook.set_tab_reorderable(viewer, True)
+        viewer.show_all()
         self.notebook.set_current_page(page)
+        viewer.grab_focus()
         self.update_status()
-        pane.spawn()
+
+    def close_viewer(self, viewer) -> None:
+        origin = self.viewers.pop(viewer, None)
+        page = self.notebook.page_num(viewer)
+        if page >= 0:
+            self.notebook.remove_page(page)
+        viewer.destroy()
+        frame = self.frame_for_pane(origin) if origin is not None else None
+        if frame is not None:
+            self.notebook.set_current_page(self.notebook.page_num(frame))
+            origin.terminal.grab_focus()
+        self.update_status()
+
+    def choose_file_to_view(self, origin: TerminalPane | None = None) -> None:
+        origin = origin or self.get_active_terminal()
+        chooser = Gtk.FileChooserDialog(title="Visualizar arquivo", transient_for=self, action=Gtk.FileChooserAction.OPEN)
+        chooser.add_buttons("Cancelar", Gtk.ResponseType.CANCEL, "Visualizar", Gtk.ResponseType.OK)
+        supported = Gtk.FileFilter()
+        supported.set_name("Imagens e planilhas")
+        for pattern in ("*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp", "*.svg", "*.bmp", "*.tif", "*.tiff",
+                        "*.avif", "*.ico", "*.csv", "*.tsv", "*.xlsx", "*.xlsm", "*.ods"):
+            supported.add_pattern(pattern)
+            supported.add_pattern(pattern.upper())
+        chooser.add_filter(supported)
+        if origin is not None:
+            chooser.set_current_folder(str(origin.current_working_directory()))
+        response = chooser.run()
+        filename = chooser.get_filename()
+        chooser.destroy()
+        if response == Gtk.ResponseType.OK and filename:
+            self.open_file(Path(filename), origin)
 
     def create_terminal(self, command: tuple[str, ...], directory: Path) -> TerminalPane:
         runtime = AppConfig(self.preferences, command, directory)
@@ -1787,6 +1884,11 @@ class HackerTerminal(Gtk.ApplicationWindow):
         )
         pane.terminal.connect("focus-in-event", lambda *_args, value=pane: self.on_pane_focus(value))
         pane.on_bell_callback = self.on_pane_bell
+        pane.on_view_file = lambda source, path: (
+            self.open_file(path, source) if path is not None else self.choose_file_to_view(source)
+        )
+        if self.open_socket is not None:
+            pane.extra_env[SOCKET_ENV] = str(self.open_socket)
         return pane
 
     def active_frame(self) -> Gtk.Frame | None:
@@ -1879,6 +1981,10 @@ class HackerTerminal(Gtk.ApplicationWindow):
         self.update_status()
 
     def close_active_pane(self, force: bool = False) -> bool:
+        viewer = self.active_viewer()
+        if viewer is not None:
+            self.close_viewer(viewer)
+            return True
         pane = self.get_active_terminal()
         frame = self.active_frame()
         if pane is None or frame is None:
@@ -1924,8 +2030,14 @@ class HackerTerminal(Gtk.ApplicationWindow):
         self.page_panes.pop(frame, None)
         self.active_panes.pop(frame, None)
         frame.destroy()
+        for viewer, origin in list(self.viewers.items()):
+            if origin in panes:
+                self.viewers[viewer] = None  # its terminal is gone
         self.update_status()
-        if self.notebook.get_n_pages() == 0:
+        if not self.page_panes:
+            # Viewers alone do not keep the window open.
+            for viewer in list(self.viewers):
+                self.close_viewer(viewer)
             self.session_store.clear()
             self.closing_window = True
             self.close()
@@ -1951,7 +2063,9 @@ class HackerTerminal(Gtk.ApplicationWindow):
         pane = self.active_panes.get(page) if isinstance(page, Gtk.Frame) else None
         if pane is not None:
             GLib.idle_add(pane.terminal.grab_focus)
-            GLib.idle_add(lambda: self.update_status() and False)
+        elif page in self.viewers:
+            GLib.idle_add(page.grab_focus)
+        GLib.idle_add(lambda: self.update_status() and False)
 
     def show_info(self, message: str) -> None:
         dialog = Gtk.MessageDialog(
@@ -2026,6 +2140,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
             ("Próxima aba", "Terminal", lambda: self.cycle_tab(1)),
             ("Aba anterior", "Terminal", lambda: self.cycle_tab(-1)),
             ("Tela cheia", "Interface", self.toggle_fullscreen),
+            ("Visualizar imagem ou planilha…", "Arquivo", self.choose_file_to_view),
             ("Aumentar fonte", "Terminal", lambda: self.run_shortcut_action("zoom_in")),
             ("Diminuir fonte", "Terminal", lambda: self.run_shortcut_action("zoom_out")),
             ("Tamanho padrão da fonte", "Terminal", lambda: self.run_shortcut_action("zoom_reset")),
@@ -2099,12 +2214,17 @@ class HackerTerminal(Gtk.ApplicationWindow):
         self.action_panel.set_visible(visible)
 
     def update_status(self) -> None:
-        count = self.notebook.get_n_pages()
+        count = len(self.page_panes)
         panes = len(self.terminals())
         pane_status = f" • {panes} {'PAINEL' if panes == 1 else 'PAINÉIS'}"
         parts = [f"{count} {'SESSÃO' if count == 1 else 'SESSÕES'}{pane_status}"]
         terminal = self.get_active_terminal()
         directory_text = ""
+        viewer = self.active_viewer()
+        if viewer is not None:
+            directory_text = shorten_home(viewer.path)
+        if self.viewers:
+            parts.append(f"{len(self.viewers)} {'VISUALIZAÇÃO' if len(self.viewers) == 1 else 'VISUALIZAÇÕES'}")
         if terminal is not None:
             directory = terminal.current_working_directory()
             directory_text = shorten_home(directory)
@@ -2134,6 +2254,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
         return True
 
     def on_window_destroy(self, _window) -> None:
+        self.open_server.stop()
         for attribute in ("status_source_id", "autosave_source_id"):
             source = getattr(self, attribute, 0)
             if source:
@@ -2227,6 +2348,21 @@ class HackerTerminalApp(Gtk.Application):
         self.theme_manager = theme_manager
         self.profile_manager = profile_manager
         self.css_provider = css_provider
+
+    def do_startup(self) -> None:
+        Gtk.Application.do_startup(self)
+        # Quit cleanly on SIGTERM/SIGINT so sockets and audio are released.
+        for signal_number in (signal.SIGTERM, signal.SIGINT):
+            GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal_number, self.on_quit_signal)
+
+    def on_quit_signal(self) -> bool:
+        for window in self.get_windows():
+            if isinstance(window, HackerTerminal):
+                window.closing_window = True
+                window.save_session()
+            window.destroy()
+        self.quit()
+        return False
 
     def do_shutdown(self) -> None:
         if KeySoundEngine._instance is not None:

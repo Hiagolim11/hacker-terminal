@@ -774,3 +774,239 @@ class KeySoundTests(unittest.TestCase):
             preferences = Preferences(key_switch=bad, key_volume=500)
             preferences.normalize()
             self.assertEqual((preferences.key_switch, preferences.key_volume), ("brown", 100))
+
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
+
+def make_xlsx(path: Path, sheet_xml: str, shared: list[str] | None = None, with_dimension: str | None = None) -> None:
+    """A minimal hand-written workbook, independent of any spreadsheet library."""
+    import zipfile
+
+    dimension = f'<dimension ref="{with_dimension}"/>' if with_dimension else ""
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("xl/workbook.xml", (
+            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            '<sheets><sheet name="Dados" sheetId="1" r:id="rId1"/></sheets></workbook>'
+        ))
+        archive.writestr("xl/_rels/workbook.xml.rels", (
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Target="worksheets/sheet1.xml" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"/></Relationships>'
+        ))
+        if shared is not None:
+            items = "".join(f"<si><t>{text}</t></si>" for text in shared)
+            archive.writestr("xl/sharedStrings.xml", f'<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">{items}</sst>')
+        archive.writestr("xl/worksheets/sheet1.xml", (
+            '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            f"{dimension}<sheetData>{sheet_xml}</sheetData></worksheet>"
+        ))
+
+
+class DocumentTests(unittest.TestCase):
+    def test_real_libreoffice_xlsx_and_ods(self) -> None:
+        from hackerterminal.documents import load_spreadsheet
+
+        expected = [
+            ["Produto", "Qtd", "Preço", "Data", "Hora", "Pago", "Obs"],
+            ["Café ☕", "3", "12.5", "15/10/2026", "14:30:00", "VERDADEIRO", "ção, ñ, 日本"],
+            ["Pão", "10", "0.75", "02/01/2026 08:05", "07:00:00", "FALSO"],
+        ]
+        for name, decimal in (("vendas.xlsx", "."), ("vendas.ods", ",")):
+            sheets = load_spreadsheet(FIXTURES / name)
+            self.assertEqual([sheet.name for sheet in sheets], ["Vendas", "Resumo", "Vazia"], name)
+            vendas = sheets[0]
+            rows = [[cell.replace(decimal, ".") if cell.replace(decimal, "").isdigit() else cell for cell in row]
+                    for row in vendas.rows[:3]]
+            self.assertEqual(rows, expected, name)
+            self.assertEqual(vendas.rows[3][6], "linha\nquebrada")
+            self.assertEqual(vendas.rows[5], ["Total", "15"])  # cached formula result
+            self.assertEqual(vendas.rows[7], ["mesclada"])
+            self.assertEqual(vendas.rows[8][9], "célula distante")
+            self.assertEqual((vendas.total_rows, vendas.total_columns, vendas.truncated), (9, 10, False))
+            self.assertEqual(sheets[1].rows[1][1].replace(",", "."), "6.08")  # cross-sheet formula
+            self.assertEqual((sheets[2].rows, sheets[2].total_rows), ([], 0))
+
+    def test_csv_dialects_and_encodings(self) -> None:
+        from hackerterminal.documents import load_spreadsheet
+
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            (folder / "ponto.csv").write_text("nome;valor\nAção;1,5\n", encoding="utf-8")
+            (folder / "windows.csv").write_bytes("nome,cidade\nJoão,São Paulo\n".encode("cp1252"))
+            (folder / "dados.tsv").write_text("a\tb\n1\t2\n", encoding="utf-8")
+            (folder / "aspas.csv").write_text('id,obs\n1,"vírgula, e\nlinha"\n', encoding="utf-8")
+            self.assertEqual(load_spreadsheet(folder / "ponto.csv")[0].rows, [["nome", "valor"], ["Ação", "1,5"]])
+            self.assertEqual(load_spreadsheet(folder / "windows.csv")[0].rows[1], ["João", "São Paulo"])
+            self.assertEqual(load_spreadsheet(folder / "dados.tsv")[0].rows, [["a", "b"], ["1", "2"]])
+            self.assertEqual(load_spreadsheet(folder / "aspas.csv")[0].rows[1], ["1", "vírgula, e\nlinha"])
+
+    def test_large_csv_is_streamed_and_estimated(self) -> None:
+        from hackerterminal import documents
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "grande.csv"
+            path.write_text("".join(f"{index},x\n" for index in range(documents.MAX_ROWS + 250)), encoding="utf-8")
+            sheet = documents.load_spreadsheet(path)[0]
+            self.assertEqual(len(sheet.rows), documents.MAX_ROWS)
+            self.assertEqual((sheet.total_prefix, sheet.total_rows), ("≈", documents.MAX_ROWS + 250))
+            self.assertTrue(sheet.truncated)
+
+    def test_xlsx_edge_cases(self) -> None:
+        from hackerterminal import documents
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "mao.xlsx"
+            make_xlsx(path, (
+                '<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1"><f>SUM(1,2)</f></c>'
+                '<c r="C1" t="inlineStr"><is><t>em linha</t></is></c><c r="D1" t="b"><v>1</v></c></row>'
+                '<row r="3"><c r="AB3"><v>2.50</v></c></row>'
+            ), shared=["olá"])
+            sheet = documents.load_spreadsheet(path)[0]
+            self.assertEqual(sheet.rows[0], ["olá", "=SUM(1,2)", "em linha", "VERDADEIRO"])
+            self.assertEqual(sheet.rows[2][27], "2.5")
+            self.assertEqual(documents.column_name(27), "AB")
+
+            rows = "".join(f'<row r="{index}"><c r="A{index}"><v>{index}</v></c></row>' for index in range(1, 301))
+            make_xlsx(path, rows)
+            with patch.object(documents, "MAX_ROWS", 50), patch.object(documents, "MAX_SCAN_ROWS", 120):
+                sheet = documents.load_spreadsheet(path)[0]
+            self.assertEqual((len(sheet.rows), sheet.total_prefix), (50, ">"))  # no <dimension>: bounded scan
+            make_xlsx(path, rows, with_dimension="A1:A300")
+            with patch.object(documents, "MAX_ROWS", 50):
+                sheet = documents.load_spreadsheet(path)[0]
+            self.assertEqual((len(sheet.rows), sheet.total_rows, sheet.total_prefix), (50, 300, ""))
+
+    def test_hostile_or_broken_files_fail_cleanly(self) -> None:
+        from hackerterminal import documents
+
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            (folder / "quebrado.xlsx").write_bytes(b"PK\x03\x04 nada aqui")
+            (folder / "texto.ods").write_text("não é zip", encoding="utf-8")
+            (folder / "planilha.xls").write_bytes(b"\xd0\xcf\x11\xe0")
+            make_xlsx(folder / "bomba.xlsx", "<row r='1'><c r='A1'><v>1</v></c></row>")
+            for name in ("quebrado.xlsx", "texto.ods", "planilha.xls"):
+                with self.assertRaises(documents.DocumentError, msg=name):
+                    documents.load_spreadsheet(folder / name)
+            with patch.object(documents, "MAX_MEMBER_BYTES", 10):
+                with self.assertRaises(documents.DocumentError):
+                    documents.load_spreadsheet(folder / "bomba.xlsx")
+            with patch.object(documents, "MAX_FILE_BYTES", 10):
+                with self.assertRaises(documents.DocumentError):
+                    documents.load_spreadsheet(FIXTURES / "vendas.ods")
+
+    def test_kinds_and_terminal_file_matching(self) -> None:
+        import re as regex
+
+        from hackerterminal.documents import kind_of
+        from hackerterminal.terminal import FILE_PATTERN, resolve_viewable
+
+        self.assertEqual(kind_of(Path("a.PNG")), "image")
+        self.assertEqual(kind_of(Path("a.ods")), "spreadsheet")
+        self.assertIsNone(kind_of(Path("a.txt")))
+        pattern = regex.compile(FILE_PATTERN.replace("(?i:", "(?:"), regex.I)
+        found = lambda text: [match.group(0) for match in pattern.finditer(text)]  # noqa: E731
+        self.assertEqual(found("foto.png  dados.CSV  notas.txt"), ["foto.png", "dados.CSV"])
+        self.assertEqual(found("~/docs/plan.ods)"), ["~/docs/plan.ods"])
+        self.assertEqual(found("https://site/x.png arquivo.pngx"), [])
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            (folder / "imagem.png").write_bytes(b"x")
+            (folder / "texto.txt").write_text("x")
+            self.assertEqual(resolve_viewable("imagem.png", folder), (folder / "imagem.png").resolve())
+            self.assertIsNone(resolve_viewable("texto.txt", folder))
+            self.assertIsNone(resolve_viewable("sumiu.png", folder))
+
+
+class OpenServerTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.runtime = tempfile.TemporaryDirectory(prefix="ht-")
+        self.env = patch.dict(os.environ, {"XDG_RUNTIME_DIR": self.runtime.name})
+        self.env.start()
+
+    def tearDown(self) -> None:
+        self.env.stop()
+        self.runtime.cleanup()
+
+    def run_client(self, socket_path: Path | None, *names: str, cwd: Path | None = None):
+        import subprocess
+
+        environment = {key: value for key, value in os.environ.items() if key != "HACKER_TERMINAL_SOCKET"}
+        if socket_path is not None:
+            environment["HACKER_TERMINAL_SOCKET"] = str(socket_path)
+            environment["HACKER_TERMINAL_PANE"] = "pane-1"
+        client = Path(__file__).resolve().parents[1] / "bin" / "ht-open"
+        return subprocess.run([str(client), *names], env=environment, cwd=cwd, capture_output=True, text=True, timeout=10)
+
+    def test_client_server_round_trip(self) -> None:
+        from hackerterminal.openserver import OpenServer
+        from hackerterminal.runtime import GLib
+
+        received = []
+        server = OpenServer(lambda path, pane: received.append((path, pane)))
+        socket_path = server.start()
+        try:
+            self.assertIsNotNone(socket_path)
+            self.assertEqual(socket_path.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(socket_path.parent.stat().st_mode & 0o777, 0o700)
+            result = self.run_client(socket_path, "gradiente.png", "faltando.csv", cwd=FIXTURES)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("arquivo não encontrado: faltando.csv", result.stderr)
+            context = GLib.MainContext.default()
+            deadline = time.monotonic() + 5
+            while not received and time.monotonic() < deadline:
+                context.iteration(False)
+            self.assertEqual(received, [((FIXTURES / "gradiente.png").resolve(), "pane-1")])
+        finally:
+            server.stop()
+        self.assertFalse(socket_path.exists())
+
+    def test_client_outside_the_terminal_and_bad_requests(self) -> None:
+        import json
+        import socket as sockets
+
+        from hackerterminal.openserver import OpenServer
+
+        result = self.run_client(None, "x.png")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("dentro do Hacker Terminal", result.stderr)
+        server = OpenServer(lambda *_args: None)
+        socket_path = server.start()
+        try:
+            for payload, error in (
+                (b"lixo\n", "pedido inválido"),
+                (json.dumps({"action": "exec", "path": "/bin/sh"}).encode() + b"\n", "ação desconhecida"),
+                (json.dumps({"action": "open", "path": "relativo.png"}).encode() + b"\n", "absoluto"),
+                (json.dumps({"action": "open", "path": "/definitely/missing.png"}).encode() + b"\n", "não encontrado"),
+            ):
+                with sockets.socket(sockets.AF_UNIX) as client:
+                    client.connect(str(socket_path))
+                    client.sendall(payload)
+                    reply = json.loads(client.recv(4096).decode())
+                self.assertFalse(reply["ok"])
+                self.assertIn(error, reply["error"])
+        finally:
+            server.stop()
+
+    def test_unsafe_directory_and_stale_sockets(self) -> None:
+        from hackerterminal.constants import APP_NAME
+        from hackerterminal.openserver import OpenServer
+
+        directory = Path(self.runtime.name) / APP_NAME
+        directory.mkdir(mode=0o700)
+        stale = directory / "999999999.sock"
+        stale.write_text("")
+        server = OpenServer(lambda *_args: None)
+        socket_path = server.start()
+        self.assertFalse(stale.exists())  # left by a dead process
+        server.stop()
+        directory.chmod(0o777)  # writable by others: must not be used
+        try:
+            socket_path = server.start()
+            self.assertIsNotNone(socket_path)
+            self.assertNotEqual(socket_path.parent, directory)  # fell back to a private directory
+        finally:
+            server.stop()
+            directory.chmod(0o700)

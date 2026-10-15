@@ -43,6 +43,7 @@ GTK 3 · VTE · Python · sem Electron, sem navegador, sem telemetria
   - [Som de teclado mecânico](#som-de-teclado-mecânico)
   - [Atalhos personalizados](#atalhos-personalizados)
   - [Ações rápidas](#ações-rápidas)
+- [Visualizar imagens e planilhas](#️-visualizar-imagens-e-planilhas)
 - [Referência de configuração](#️-referência-de-configuração)
 - [Linha de comando](#-linha-de-comando)
 - [Como funciona](#-como-funciona)
@@ -101,6 +102,7 @@ Por cima desse motor maduro, ele adiciona uma camada pensada para quem passa o d
 - **Atalhos 100% remapeáveis**, com detecção de conflitos
 - **Perfis** que guardam tema, fonte, shell, cursor, diretório e ações
 - **Ações rápidas** editáveis no painel lateral
+- **Visualizador de imagens e planilhas** em abas (`ht-open`)
 - Barra de status com diretório, branch Git e virtualenv
 
 </td>
@@ -221,7 +223,7 @@ hacker-terminal --diagnose
 ```
 
 ```text
-Hacker Terminal 0.12.2
+Hacker Terminal 0.13.0
 GTK: 3.24.52
 VTE: 0.84.1
 Fonte selecionada: JetBrainsMono Nerd Font
@@ -258,7 +260,7 @@ Estes são os padrões — **todos podem ser alterados** em *Preferências → A
 | `Ctrl+PageUp` | Aba anterior | | `F11` | Tela cheia |
 | `Ctrl++` / `Ctrl+=` | Aumentar fonte | | `Ctrl+-` | Diminuir fonte |
 | `Ctrl+0` | Fonte padrão | | `Ctrl` + roda | Zoom com mouse/touchpad |
-| `Ctrl+clique` | Abrir link | | Clique direito | Menu contextual |
+| `Ctrl+clique` | Abrir link ou visualizar arquivo | | Clique direito | Menu contextual |
 
 Para listar os atalhos em uso (incluindo os seus):
 
@@ -440,6 +442,43 @@ O painel lateral traz comandos de diagnóstico local (identidade, interfaces de 
 
 ---
 
+## 🖼️ Visualizar imagens e planilhas
+
+Abra imagens e planilhas **sem sair do terminal**: elas aparecem numa aba de visualização ao lado do terminal de onde vieram.
+
+<div align="center">
+<img src="docs/screenshots/viewer-sheet.png" alt="Planilha XLSX no visualizador" width="100%">
+</div>
+
+Há quatro jeitos de abrir:
+
+```bash
+ht-open foto.jpg relatorio.xlsx dados.csv   # um ou vários arquivos
+```
+
+- **`Ctrl+clique`** num nome de arquivo na saída do terminal — por exemplo, depois de um `ls`.
+- **Botão direito** → *Visualizar arquivo…* (ou *Visualizar &lt;nome&gt;* sobre um nome de arquivo).
+- **Paleta** (`Ctrl+Shift+P`) → *Visualizar imagem ou planilha…*
+
+| Tipo | Formatos | Recursos |
+| --- | --- | --- |
+| 🖼️ Imagens | PNG, JPEG, GIF (animado), WebP, SVG, AVIF, TIFF, BMP, ICO e os demais do GdkPixbuf | Ajuste à janela, zoom com `+` `-` `0` `F` ou `Ctrl` + roda, orientação EXIF |
+| 📊 Planilhas | CSV, TSV, XLSX/XLSM, ODS | Várias planilhas, colunas A, B, C…, datas e horas, fórmulas, copiar linhas selecionadas (`Ctrl+C`) |
+
+Na visualização, `Esc` (ou `Ctrl+Shift+W`) fecha a aba e volta ao terminal, e o botão ⧉ abre o arquivo no aplicativo padrão do sistema.
+
+> [!NOTE]
+> Para continuar leve, o visualizador mostra até **5.000 linhas × 200 colunas** e informa o total do arquivo — exato, estimado (≈) ou mínimo (“mais de”). Arquivos de planilha acima de 200 MB e formatos antigos como `.xls` são recusados com uma mensagem; use o botão de abrir no aplicativo padrão.
+
+<details>
+<summary><b>Como funciona</b></summary>
+
+Cada janela escuta um socket UNIX privado (permissão `0600`, dentro de um diretório `0700` do seu usuário) e informa o caminho ao shell em `HACKER_TERMINAL_SOCKET`. O `ht-open` envia apenas o caminho absoluto do arquivo; o terminal valida e abre a visualização — nenhum comando é executado. As planilhas são lidas com a biblioteca padrão do Python, em segundo plano, com limites de tamanho descompactado contra arquivos zip maliciosos.
+
+</details>
+
+---
+
 ## 🗂️ Referência de configuração
 
 ### Onde ficam os arquivos
@@ -519,6 +558,8 @@ hacker-terminal [opções] [-e COMANDO ...]
 | `--debug` | Mensagens detalhadas no terminal e no log |
 | `--version` | Mostra a versão |
 
+Dentro do terminal também existe o comando **`ht-open ARQUIVO…`**, que abre imagens e planilhas no visualizador.
+
 ---
 
 ## 🔧 Como funciona
@@ -548,6 +589,7 @@ flowchart LR
 | `themes.py` | Carrega e valida temas, gera o CSS do GTK, salva temas personalizados |
 | `shortcuts.py` | Lê, valida, casa e rotula atalhos (sem depender de display) |
 | `keysound.py` | Síntese dos switches, pacotes gravados e o mixer de áudio |
+| `documents.py`, `viewer.py`, `openserver.py` | Leitores de planilhas, aba de visualização e o socket do `ht-open` |
 | `config.py`, `profiles.py`, `session.py`, `actions.py` | Persistência atômica de preferências, perfis, sessão e ações |
 | `effects.py` | Desenha a chuva digital e as scanlines por cima do VTE |
 | `fonts.py`, `project.py`, `logs.py` | Detecção de Nerd Fonts, contexto Git/venv e log rotativo |

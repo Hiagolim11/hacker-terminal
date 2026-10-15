@@ -487,7 +487,11 @@ def _make_sink() -> object | None:
             sink.set_property("buffer-time", 15_000)
             sink.set_property("latency-time", 5_000)
         if name == "fakesink":
-            sink.set_property("sync", True)  # keep real-time pacing in tests
+            # Real-time pacing like a device, but no async preroll: a synced
+            # fakesink could sit in PAUSED->PLAYING after an idle pause, which
+            # pulsesink never does (verified over 180 resume cycles).
+            sink.set_property("sync", True)
+            sink.set_property("async", False)
         return sink
     return None
 

@@ -1,4 +1,4 @@
-# Auditoria técnica — versão 0.12.1
+# Auditoria técnica — versão 0.13.0
 
 Esta revisão cobre o aplicativo GTK/VTE, scripts, metadados e empacotamento. Os testes automatizados estão em `tests/smoke.sh`.
 
@@ -55,6 +55,11 @@ Esta revisão cobre o aplicativo GTK/VTE, scripts, metadados e empacotamento. Os
 - **Touchpad sem rolagem com efeitos ligados:** a chuva digital e as scanlines ficavam num filho de `Gtk.Overlay`, cuja janela GDK recebia a rolagem do X11 apesar de `set_overlay_pass_through`; o VTE não recebia nenhum evento. Os testes anteriores entregavam eventos sintéticos direto ao VTE e não cobriam o hit-test do X. Os efeitos passaram a ser desenhados após o VTE, e o teste agora usa eventos reais.
 
 - **Som do teclado mudo após poucas teclas (0.12.0):** cada voz `appsrc → pulsesink` recebia buffers esparsos; após o primeiro esvaziamento, a stream não tocava mais, com ou sem timestamps ou flush. Os testes usavam `fakesink` e um som por voz, e não detectaram. A saída virou uma stream contínua com mixer próprio; a correção foi validada gravando o monitor de um sink nulo do PipeWire durante digitação simulada.
+
+- **Visualizador sem custo quando não usado:** o módulo de interface do visualizador só é importado no primeiro arquivo aberto, e cliques comuns no terminal não fazem busca de links ou arquivos.
+- **Leitura de planilhas limitada:** a primeira versão lia o CSV inteiro em memória (8,7 s e 358 MB de pico para 300 mil linhas, segurando o GIL). Agora é em fluxo (~0,1 s e 9 MB); XLSX usa a dimensão declarada e há um orçamento de linhas percorridas para XLSX sem dimensão e ODS.
+- **PATH redefinido pelo shell de login:** o `/etc/profile` do Kali reescreve o `PATH`, então o `ht-open` é instalado em um diretório padrão em vez de depender do ambiente herdado.
+- **Socket UNIX:** caminho limitado a 108 bytes com alternativa automática, diretórios inseguros ignorados e sockets de processos encerrados removidos.
 
 ## Verificações
 

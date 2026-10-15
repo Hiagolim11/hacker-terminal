@@ -182,6 +182,68 @@ def main() -> int:
                 raise AssertionError("theme was not applied immediately")
             if window.action_panel is None or window.action_panel.get_visible():
                 raise AssertionError("panel visibility preference was not applied")
+            fixtures = Path(__file__).resolve().parent / "fixtures"
+            origin = window.get_active_terminal()
+            pages_before = window.notebook.get_n_pages()
+
+            def wait_for(condition, seconds: float = 5.0) -> bool:
+                deadline = time.monotonic() + seconds
+                while not condition() and time.monotonic() < deadline:
+                    Gtk.main_iteration_do(False)
+                return condition()
+
+            window.open_file(fixtures / "gradiente.png", origin)
+            image_viewer = window.active_viewer()
+            if image_viewer is None or window.notebook.get_n_pages() != pages_before + 1:
+                raise AssertionError("image viewer tab was not opened")
+            if window.notebook.page_num(image_viewer) != window.notebook.page_num(window.frame_for_pane(origin)) + 1:
+                raise AssertionError("viewer tab was not placed next to its terminal")
+            if not wait_for(lambda: image_viewer.stack.get_visible_child_name() == "image"):
+                raise AssertionError("image did not load")
+            if "64 × 40 px" not in image_viewer.info.get_text():
+                raise AssertionError("image size was not reported")
+            window.run_shortcut_action("zoom_in")
+            if image_viewer.fit or image_viewer.zoom <= 1.0:
+                raise AssertionError("zoom shortcut did not reach the image viewer")
+            window.open_file(fixtures / "gradiente.png", origin)
+            if len(window.viewers) != 1:
+                raise AssertionError("reopening a file created a duplicate tab")
+            window.open_file(fixtures / "animado.gif", origin)
+            gif_viewer = window.active_viewer()
+            if not wait_for(lambda: gif_viewer.animation is not None):
+                raise AssertionError("animated GIF was not shown as an animation")
+            window.open_file(fixtures / "vendas.xlsx", origin)
+            sheet_viewer = window.active_viewer()
+            if not wait_for(lambda: sheet_viewer.stack.get_visible_child_name() == "table"):
+                raise AssertionError("spreadsheet did not load")
+            if len(sheet_viewer.tables) != 2 or "3 planilhas" not in sheet_viewer.info.get_text():
+                raise AssertionError("spreadsheet sheets were not shown")
+            first_table = sheet_viewer.tables[0].get_model()
+            if len(first_table) != 9 or first_table[1][1] != "Café ☕" or first_table[1][4] != "15/10/2026":
+                raise AssertionError("spreadsheet cells were not displayed correctly")
+            sheet_viewer.tables[0].get_selection().select_path(Gtk.TreePath.new_from_indices([1]))
+            sheet_viewer.copy()
+            if not wait_for(lambda: (Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).wait_for_text() or "").startswith("Café ☕\t3")):
+                raise AssertionError("copying spreadsheet rows failed")
+            if "VISUALIZAÇÕES" not in window.status.get_text() or "1 SESSÃO" not in window.status.get_text() and "SESSÕES" not in window.status.get_text():
+                raise AssertionError("status does not count viewers separately")
+            broken = root / "quebrado.xlsx"
+            broken.write_bytes(b"PK\x03\x04 corrompido")
+            window.open_file(broken, origin)
+            broken_viewer = window.active_viewer()
+            if not wait_for(lambda: broken_viewer.stack.get_visible_child_name() == "error"):
+                raise AssertionError("corrupt spreadsheet did not show an error page")
+            for viewer in list(window.viewers):
+                window.notebook.set_current_page(window.notebook.page_num(viewer))
+                if not window.close_active_pane():
+                    raise AssertionError("close shortcut did not close the viewer")
+            if window.viewers or window.get_active_terminal() is not origin:
+                raise AssertionError("closing viewers did not return to the terminal")
+            if window.notebook.get_n_pages() != pages_before:
+                raise AssertionError("viewer tabs were left behind")
+            if not window.open_socket or origin.extra_env.get("HACKER_TERMINAL_SOCKET") != str(window.open_socket):
+                raise AssertionError("terminal panes do not receive the ht-open socket")
+
             base_actions = len(window.action_store.load())
             editor = ProfileEditorDialog(window, profiles, None)
             editor.name_entry.set_text("Laboratório")

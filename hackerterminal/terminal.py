@@ -7,11 +7,14 @@ import os
 import re
 import shlex
 import shutil
+import uuid
 from pathlib import Path
 from typing import Callable
 from urllib.parse import unquote, urlparse
 
 from .config import AppConfig
+from .documents import IMAGE_SUFFIXES, SPREADSHEET_SUFFIXES
+from .openserver import PANE_ENV
 from .constants import DEFAULT_FONT_SIZE
 from .effects import EffectsLayer
 from .keysound import KeySoundEngine
@@ -34,6 +37,28 @@ CURSOR_BLINK = {
 # C0 controls other than tab/newline/carriage return, plus DEL and C1 controls.
 UNSAFE_PASTE_CHARACTERS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
 URL_PATTERN = r"(?:https?|ftp|file)://[^\s<>{}\[\]\"']+"
+# File names with a viewable extension, e.g. in `ls` output; Ctrl+click opens them.
+VIEWABLE_SUFFIXES = sorted(suffix[1:] for suffix in IMAGE_SUFFIXES | SPREADSHEET_SUFFIXES)
+FILE_PATTERN = (
+    r"(?<![\w/:.~-])(?:~|\.{1,2})?/?(?:[\w@+,.-]+/)*[\w@+,.-]*\w\.(?i:"
+    + "|".join(VIEWABLE_SUFFIXES)
+    + r")(?![\w/])"
+)
+TOOLS_DIRECTORY = Path(__file__).resolve().parent.parent / "bin"
+
+
+def resolve_viewable(text: str, directory: Path) -> Path | None:
+    """Turn a file name seen in the terminal into an existing viewable file."""
+    candidate = Path(os.path.expanduser(text.strip()))
+    if not candidate.is_absolute():
+        candidate = directory / candidate
+    try:
+        candidate = candidate.resolve()
+    except (OSError, RuntimeError):
+        return None
+    if candidate.suffix.lower() not in IMAGE_SUFFIXES | SPREADSHEET_SUFFIXES:
+        return None
+    return candidate if candidate.is_file() else None
 
 
 def rgba(value: str, alpha: float = 1.0) -> Gdk.RGBA:
@@ -188,6 +213,11 @@ class TerminalPane(Gtk.Box):
         self.on_title_changed_callback = on_title_changed
         self.on_preferences_changed = on_preferences_changed
         self.on_bell_callback: Callable[["TerminalPane"], None] | None = None
+        self.on_view_file: Callable[["TerminalPane", Path | None], None] | None = None
+        self.pane_id = uuid.uuid4().hex
+        self.extra_env: dict[str, str] = {}
+        self.link_tag = -1
+        self.file_tag = -1
         self.sound_enabled = config.preferences.sound
         self.shell_running = False
         self.closing = False
@@ -227,10 +257,16 @@ class TerminalPane(Gtk.Box):
         self.terminal.connect("notify::window-title", self.on_window_title_changed)
         try:
             link_regex = Vte.Regex.new_for_match(URL_PATTERN, -1, PCRE2_MULTILINE)
-            link_tag = self.terminal.match_add_regex(link_regex, 0)
-            self.terminal.match_set_cursor_name(link_tag, "pointer")
+            self.link_tag = self.terminal.match_add_regex(link_regex, 0)
+            self.terminal.match_set_cursor_name(self.link_tag, "pointer")
         except GLib.Error:
             pass
+        try:
+            file_regex = Vte.Regex.new_for_match(FILE_PATTERN, -1, PCRE2_MULTILINE)
+            self.file_tag = self.terminal.match_add_regex(file_regex, 0)
+            self.terminal.match_set_cursor_name(self.file_tag, "pointer")
+        except GLib.Error as error:
+            LOGGER.debug("padrão de arquivos indisponível: %s", error)
         self.connect("destroy", self.on_destroy)
 
         self.scroller = Gtk.ScrolledWindow()
@@ -297,6 +333,11 @@ class TerminalPane(Gtk.Box):
         LOGGER.debug("iniciando %s em %s", argv, self.config.working_directory)
         child_env = dict(os.environ)
         child_env.update({"TERM": "xterm-256color", "COLORTERM": "truecolor", "HACKER_TERMINAL": "1"})
+        child_env.update(self.extra_env)
+        child_env[PANE_ENV] = self.pane_id
+        if (TOOLS_DIRECTORY / "ht-open").is_file():
+            # Appended, so a user's own command with the same name still wins.
+            child_env["PATH"] = os.pathsep.join(filter(None, [child_env.get("PATH", ""), str(TOOLS_DIRECTORY)]))
         environment = [f"{key}={value}" for key, value in child_env.items()]
         self.spawn_cancellable = Gio.Cancellable()
         self.terminal.spawn_async(
@@ -466,10 +507,16 @@ class TerminalPane(Gtk.Box):
         # VTE does not consistently reclaim focus after toolbar/sidebar widgets
         # receive it, especially with some GTK 3 input backends.
         terminal.grab_focus()
-        uri = self.uri_at_event(event)
         control = bool(event.state & Gdk.ModifierType.CONTROL_MASK)
+        if not (event.button == 3 or (event.button == 1 and control)):
+            return False  # plain clicks never need link or file matching
+        uri = self.uri_at_event(event)
+        viewable = None if uri else self.file_at_event(event)
         if event.button == 1 and control and uri:
             self.open_uri(uri)
+            return True
+        if event.button == 1 and control and viewable is not None and self.on_view_file is not None:
+            self.on_view_file(self, viewable)
             return True
         if event.button != 3:
             return False
@@ -480,6 +527,10 @@ class TerminalPane(Gtk.Box):
             ("Pesquisar", lambda *_: self.show_search()),
             ("Limpar", lambda *_: self.run_command("clear")),
         ]
+        if self.on_view_file is not None:
+            actions.append(("Visualizar arquivo…", lambda *_: self.on_view_file(self, None)))
+            if viewable is not None:
+                actions.insert(0, (f"Visualizar {viewable.name}", lambda *_: self.on_view_file(self, viewable)))
         if uri:
             actions.insert(0, ("Abrir link", lambda *_: self.open_uri(uri)))
         for label, callback in actions:
@@ -490,12 +541,23 @@ class TerminalPane(Gtk.Box):
         menu.popup_at_pointer(event)
         return True
 
+    def file_at_event(self, event) -> Path | None:
+        match = self.terminal.match_check_event(event)
+        if not isinstance(match, tuple) or match[0] is None or match[1] != self.file_tag:
+            return None
+        return resolve_viewable(match[0], self.current_working_directory())
+
     def uri_at_event(self, event) -> str | None:
         hyperlink = normalize_uri_candidate(self.terminal.hyperlink_check_event(event))
         if hyperlink:
             return hyperlink
         match = self.terminal.match_check_event(event)
-        value = match[0] if isinstance(match, tuple) else match
+        if isinstance(match, tuple):
+            if match[1] == self.file_tag:
+                return None
+            value = match[0]
+        else:
+            value = match
         return normalize_uri_candidate(value)
 
     @staticmethod

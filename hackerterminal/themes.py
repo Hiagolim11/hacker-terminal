@@ -135,6 +135,26 @@ notebook > header tab:checked {{
 }}
 notebook > header tab label {{ font-size: 11px; }}
 notebook > header > arrow {{ color: {self.muted}; }}
+.viewer {{ background-color: {terminal_background}; border: 1px solid {self.border}; border-radius: 8px; }}
+.viewer-bar {{
+  background-color: {self.surface}; border-bottom: 1px solid {self.border};
+  border-radius: 8px 8px 0 0; padding: 3px 6px;
+}}
+.viewer-title {{ color: {self.foreground}; font-weight: 700; }}
+.viewer-info {{ color: {self.muted}; font-family: monospace; font-size: 10px; }}
+.viewer-button {{
+  color: {self.muted}; background-image: none; background-color: transparent;
+  border: 1px solid transparent; border-radius: 6px; box-shadow: none; min-width: 26px; min-height: 24px;
+}}
+.viewer-button:hover {{ color: {self.foreground}; background-color: {raised}; border-color: {self.border}; }}
+.viewer-canvas, .viewer-canvas viewport {{ background-color: {terminal_background}; }}
+.viewer-table {{ background-color: {terminal_background}; color: {self.terminal_foreground}; font-size: 11px; }}
+.viewer-table:selected {{ background-color: {accent_soft}; color: {self.foreground}; }}
+.viewer-table header button {{
+  background-image: none; background-color: {self.surface}; color: {self.muted};
+  border-color: {self.border}; box-shadow: none; font-family: monospace; font-size: 10px; padding: 2px 6px;
+}}
+.viewer-sheets > header {{ background-color: {self.surface}; border-top: 1px solid {self.border}; padding: 2px 4px; }}
 .tab-bell label {{ color: {self.danger}; font-weight: 700; }}
 .shortcut-label {{ font-family: monospace; color: {self.accent}; }}
 .shortcut-row {{ padding: 2px 0; }}

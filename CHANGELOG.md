@@ -2,6 +2,17 @@
 
 Este projeto segue [Semantic Versioning](https://semver.org/).
 
+## 0.13.0
+
+- Visualizador de imagens e planilhas em abas, ao lado do terminal de origem: `ht-open ARQUIVO`, `Ctrl+clique` em nomes de arquivo na saída (por exemplo, de um `ls`), menu do botão direito ou a paleta de comandos.
+- Imagens: PNG, JPEG, GIF animado, WebP, SVG, AVIF, TIFF, BMP e outros formatos do GdkPixbuf, com ajuste à janela, zoom (`+`, `-`, `0`, `F`, `Ctrl` + roda) e orientação EXIF.
+- Planilhas: CSV/TSV (delimitador e codificação detectados), XLSX e ODS, com várias planilhas, colunas no estilo A, B, C, datas e horas formatadas, fórmulas e cópia das linhas selecionadas como texto tabulado.
+- Leve por construção: o visualizador só é carregado no primeiro uso; leitura em segundo plano e tabela preenchida em blocos; até 5.000 linhas × 200 colunas exibidas, com total exato, estimado (≈) ou mínimo (mais de) para arquivos maiores. Um CSV de 300 mil linhas abre em ~0,1 s.
+- Seguro: o `ht-open` fala com o terminal por um socket UNIX privado (0600, em diretório 0700 verificado) e só pode pedir visualização; arquivos zip corrompidos ou grandes demais são recusados com uma mensagem clara.
+- `install.sh` e o pacote `.deb` instalam o comando `ht-open` (sem sobrescrever um comando de mesmo nome do usuário).
+- O terminal agora encerra de forma limpa com SIGTERM/SIGINT, salvando a sessão e liberando socket e áudio.
+- Corrige um teste intermitente do som (~7% das execuções): o `fakesink` de teste podia ficar preso entre PAUSED e PLAYING após a pausa por inatividade. O `pulsesink` real não tem esse problema (180 de 180 retomadas com som em ~5 ms).
+
 ## 0.12.2
 
 - README reescrito: instalação passo a passo, guia de personalização, referência completa de configuração e linha de comando, arquitetura, motor de som, segurança e solução de problemas.

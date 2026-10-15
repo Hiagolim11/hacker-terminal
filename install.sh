@@ -9,6 +9,8 @@ desktop_dir="$data_home/applications"
 icon_dir="$data_home/icons/hicolor/scalable/apps"
 
 uninstall() {
+  # Only remove ht-open when it is our own link, never a user's command.
+  [ "$(readlink -- "$bin_dir/ht-open" 2>/dev/null)" = "$app_dir/bin/ht-open" ] && rm -f -- "$bin_dir/ht-open"
   rm -f -- "$bin_dir/hacker-terminal" "$desktop_dir/hacker-terminal.desktop" \
     "$desktop_dir/org.hackerterminal.HackerTerminal.desktop" \
     "$icon_dir/hacker-terminal.svg"
@@ -58,6 +60,14 @@ sed "s|@EXEC@|\"$escaped_launcher\"|g" \
   > "$desktop_dir/org.hackerterminal.HackerTerminal.desktop"
 chmod 644 "$desktop_dir/org.hackerterminal.HackerTerminal.desktop"
 rm -f -- "$desktop_dir/hacker-terminal.desktop"
+
+install -d "$app_dir/bin"
+install -m 755 "$project_dir/bin/ht-open" "$app_dir/bin/ht-open"
+if [ -e "$bin_dir/ht-open" ] && [ "$(readlink -- "$bin_dir/ht-open")" != "$app_dir/bin/ht-open" ]; then
+  printf '%s\n' "Aviso: $bin_dir/ht-open já existe e não foi alterado." >&2
+else
+  ln -sfn "$app_dir/bin/ht-open" "$bin_dir/ht-open"
+fi
 
 cat > "$bin_dir/hacker-terminal" <<EOF
 #!/bin/sh
