@@ -12,6 +12,6 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-gi gir1.2-gtk-3.0 gir1.2-vte-2.91 desktop-file-utils xvfb xdotool python3-gst-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good dpkg-dev
+          sudo apt-get install -y python3-gi python3-gi-cairo librsvg2-common gir1.2-gtk-3.0 gir1.2-vte-2.91 desktop-file-utils xvfb xdotool python3-gst-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good dpkg-dev
       - name: Run checks
         run: PATH=/usr/bin:/bin HACKER_TERMINAL_GUI_TEST=1 make check

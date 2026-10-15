@@ -14,8 +14,16 @@ try:
 except (ImportError, ValueError) as error:
     raise SystemExit(
         "Dependencias GTK/VTE ausentes. No Debian/Kali, execute: "
-        "sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-vte-2.91"
+        "sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-vte-2.91"
     ) from error
+
+try:
+    # Draw callbacks receive a cairo.Context; without python3-gi-cairo every
+    # call raises TypeError, so the effects are disabled instead.
+    gi.require_foreign("cairo")
+    HAS_CAIRO = True
+except ImportError:
+    HAS_CAIRO = False
 
 try:
     gi.require_version("Gst", "1.0")
@@ -23,4 +31,4 @@ try:
 except (ImportError, ValueError):
     Gst = None
 
-__all__ = ["Gdk", "Gio", "GLib", "Gst", "Gtk", "Pango", "PangoCairo", "Vte"]
+__all__ = ["HAS_CAIRO", "Gdk", "Gio", "GLib", "Gst", "Gtk", "Pango", "PangoCairo", "Vte"]

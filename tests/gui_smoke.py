@@ -424,8 +424,19 @@ def main() -> int:
                 raise AssertionError("smooth touchpad scroll was consumed before VTE")
             if not terminal.terminal.has_focus():
                 raise AssertionError("touchpad scroll did not reactivate the terminal")
+            if terminal.effects.draw_handler:
+                raise AssertionError("effects hook the terminal's drawing while disabled")
+            from hackerterminal import effects as effects_module
+
+            effects_module.HAS_CAIRO = False
+            terminal.effects.set_enabled(True)
+            effects_module.HAS_CAIRO = True
+            if terminal.effects.enabled or terminal.effects.draw_handler:
+                raise AssertionError("effects were enabled without cairo bindings")
             preferences.effects = True
             window.preferences_changed()
+            if not terminal.effects.draw_handler:
+                raise AssertionError("enabled effects are not drawn")
             widget = terminal.terminal
             while widget is not None and widget is not terminal:
                 if isinstance(widget, Gtk.Overlay):

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import random
 
 from .themes import Theme
-from .runtime import GLib, Gtk
+from .runtime import HAS_CAIRO, GLib, Gtk
+
+LOGGER = logging.getLogger(__name__)
 
 
 class EffectsLayer:
@@ -26,7 +29,7 @@ class EffectsLayer:
         self.last_width = 0
         self.matrix_rgb = (0.08, 1.0, 0.55)
         self.scanline_opacity = 0.12
-        target.connect_after("draw", self.on_draw)
+        self.draw_handler = 0
         target.connect("destroy", self.on_destroy)
 
     def start_timer(self) -> None:
@@ -48,9 +51,19 @@ class EffectsLayer:
             self.source_id = 0
 
     def set_enabled(self, enabled: bool) -> None:
+        if enabled and not HAS_CAIRO:
+            LOGGER.warning("efeitos visuais indisponíveis: instale python3-gi-cairo")
+            enabled = False
         if enabled == self.enabled:
             return
         self.enabled = enabled
+        # Only hook the terminal's drawing while effects are on, so a plain
+        # terminal never pays for (or depends on) the cairo bindings.
+        if enabled and not self.draw_handler:
+            self.draw_handler = self.target.connect_after("draw", self.on_draw)
+        elif not enabled and self.draw_handler:
+            self.target.disconnect(self.draw_handler)
+            self.draw_handler = 0
         if enabled:
             self.start_timer()
         self.target.queue_draw()

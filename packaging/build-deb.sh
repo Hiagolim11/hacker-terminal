@@ -64,8 +64,8 @@ Section: utils
 Priority: optional
 Architecture: all
 Maintainer: $maintainer
-Depends: python3 (>= 3.10), python3-gi, gir1.2-gtk-3.0, gir1.2-vte-2.91, hicolor-icon-theme
-Recommends: python3-gst-1.0, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, fonts-hack
+Depends: python3 (>= 3.10), python3-gi, python3-gi-cairo, gir1.2-gtk-3.0, gir1.2-vte-2.91, hicolor-icon-theme
+Recommends: librsvg2-common, python3-gst-1.0, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, fonts-hack
 Description: professional native terminal for Linux
  Hacker Terminal is a lightweight GTK 3 and VTE terminal with tabs, split
  panes, session restoration, project context, history search, validated custom

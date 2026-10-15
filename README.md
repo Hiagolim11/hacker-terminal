@@ -164,7 +164,7 @@ Por cima desse motor maduro, ele adiciona uma camada pensada para quem passa o d
 | Componente | Versão | Pacote (Debian/Ubuntu/Kali) | Obrigatório |
 | --- | --- | --- | :---: |
 | Python | 3.10+ | `python3` | ✅ |
-| PyGObject | — | `python3-gi` | ✅ |
+| PyGObject | — | `python3-gi`, `python3-gi-cairo` | ✅ |
 | GTK | 3.24 | `gir1.2-gtk-3.0` | ✅ |
 | VTE | 2.91 | `gir1.2-vte-2.91` | ✅ |
 | GStreamer | 1.x | `python3-gst-1.0`, `gstreamer1.0-plugins-base`, `gstreamer1.0-plugins-good` | 🔊 só para sons |
@@ -185,7 +185,7 @@ O terminal aparece no menu de aplicativos e fica disponível como `hacker-termin
 ### Opção 2 — Instalação só para o seu usuário (sem `sudo` para o app)
 
 ```bash
-sudo apt install python3 python3-gi gir1.2-gtk-3.0 gir1.2-vte-2.91 \
+sudo apt install python3 python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-vte-2.91 \
                  python3-gst-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good
 git clone https://github.com/Hiagolim11/hacker-terminal.git
 cd hacker-terminal
