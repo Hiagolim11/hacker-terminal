@@ -8,6 +8,7 @@ Este projeto segue [Semantic Versioning](https://semver.org/).
 - Capturas de tela dos cinco temas, dos painéis, da paleta e das preferências, e amostras de áudio dos switches em `docs/`.
 - O pacote `.deb` passa a recomendar `gstreamer1.0-plugins-base` e `gstreamer1.0-plugins-good`, necessários para o som do teclado.
 - O CI instala o GStreamer para executar os testes de som.
+- Corrige um travamento intermitente (segfault) ao encerrar: o fluxo de áudio continuava chamando código Python durante a finalização do interpretador. O mixer agora para no encerramento do aplicativo e via `atexit`, e os blocos de áudio usam memória do próprio GStreamer.
 
 ## 0.12.1
 

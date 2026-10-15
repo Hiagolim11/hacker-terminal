@@ -672,9 +672,10 @@ class KeySoundTests(unittest.TestCase):
         engine = KeySoundEngine()
         loop = GLib.MainLoop()
         engine.on_loaded.append(loop.quit)
-        GLib.timeout_add_seconds(10, loop.quit)
+        guard = GLib.timeout_add_seconds(10, loop.quit)
         engine.configure("blue", 50, release=False)
         loop.run()
+        GLib.source_remove(guard)
         self.assertIsNotNone(engine.bank)
         self.assertIsNotNone(engine.mixer)  # warmed up before the first key
         blocks: list[bool] = []
@@ -755,9 +756,10 @@ class KeySoundTests(unittest.TestCase):
         engine = KeySoundEngine()
         loop = GLib.MainLoop()
         engine.on_loaded.append(loop.quit)
-        GLib.timeout_add_seconds(10, loop.quit)
+        guard = GLib.timeout_add_seconds(10, loop.quit)
         engine.configure("pack:does-not-exist", 70, True)
         loop.run()
+        GLib.source_remove(guard)
         self.assertIsNotNone(engine.last_error)
         self.assertIsNotNone(engine.bank)
         engine.shutdown()

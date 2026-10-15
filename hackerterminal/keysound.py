@@ -15,6 +15,7 @@ and they are mixed into the next block, so nothing starts or seeks a pipeline.
 from __future__ import annotations
 
 import array
+import atexit
 import hashlib
 import json
 import logging
@@ -24,6 +25,7 @@ import random
 import re
 import threading
 import time
+import weakref
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -493,6 +495,17 @@ def _make_sink() -> object | None:
 CHUNK = RATE // 200  # 5 ms per block
 SILENCE = bytes(CHUNK * 2)
 MAX_ACTIVE = 24
+_LIVE_MIXERS: "weakref.WeakSet[_Mixer]" = weakref.WeakSet()
+
+
+def _stop_live_mixers() -> None:
+    # Stop streaming threads before the interpreter finalizes; a need-data
+    # callback into a half-torn-down Python can crash the process on exit.
+    for mixer in list(_LIVE_MIXERS):
+        mixer.stop()
+
+
+atexit.register(_stop_live_mixers)
 
 
 class _Mixer:
@@ -529,6 +542,8 @@ class _Mixer:
         self.active: list[list] = []  # [samples, position]
         self.position = 0
         self.blocks = 0
+        self.stopped = False
+        _LIVE_MIXERS.add(self)
         self.pipeline.set_state(Gst.State.PLAYING)
 
     def set_volume(self, value: float) -> None:
@@ -570,7 +585,13 @@ class _Mixer:
         return array.array("h", (32_767 if v > 32_767 else -32_768 if v < -32_768 else v for v in mixed)).tobytes()
 
     def on_need_data(self, source, _length) -> None:
-        buffer = Gst.Buffer.new_wrapped(self.next_block())
+        if self.stopped:
+            return
+        data = self.next_block()
+        # Copy into GStreamer-owned memory: a buffer wrapping Python bytes
+        # could be released by GStreamer after the interpreter is gone.
+        buffer = Gst.Buffer.new_allocate(None, len(data), None)
+        buffer.fill(0, data)
         buffer.pts = self.blocks * Gst.SECOND // 200
         buffer.duration = Gst.SECOND // 200
         self.blocks += 1
@@ -581,7 +602,11 @@ class _Mixer:
         self.pipeline.set_state(Gst.State.PLAYING if playing else Gst.State.PAUSED)
 
     def stop(self) -> None:
+        if self.stopped:
+            return
+        self.stopped = True
         self.pipeline.set_state(Gst.State.NULL)
+        _LIVE_MIXERS.discard(self)
 
 
 class KeySoundEngine:

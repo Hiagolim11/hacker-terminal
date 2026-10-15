@@ -2228,6 +2228,11 @@ class HackerTerminalApp(Gtk.Application):
         self.profile_manager = profile_manager
         self.css_provider = css_provider
 
+    def do_shutdown(self) -> None:
+        if KeySoundEngine._instance is not None:
+            KeySoundEngine._instance.shutdown()
+        Gtk.Application.do_shutdown(self)
+
     def do_activate(self) -> None:
         window = HackerTerminal(
             self,
