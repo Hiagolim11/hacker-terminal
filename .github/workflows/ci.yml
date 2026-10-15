@@ -12,6 +12,6 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-gi gir1.2-gtk-3.0 gir1.2-vte-2.91 desktop-file-utils xvfb
+          sudo apt-get install -y python3-gi gir1.2-gtk-3.0 gir1.2-vte-2.91 desktop-file-utils xvfb xdotool
       - name: Run checks
         run: PATH=/usr/bin:/bin HACKER_TERMINAL_GUI_TEST=1 make check

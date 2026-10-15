@@ -3,8 +3,11 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 import sys
 import tempfile
+import time
 import traceback
 from pathlib import Path
 
@@ -385,6 +388,46 @@ def main() -> int:
                 raise AssertionError("smooth touchpad scroll was consumed before VTE")
             if not terminal.terminal.has_focus():
                 raise AssertionError("touchpad scroll did not reactivate the terminal")
+            preferences.effects = True
+            window.preferences_changed()
+            widget = terminal.terminal
+            while widget is not None and widget is not terminal:
+                if isinstance(widget, Gtk.Overlay):
+                    raise AssertionError("effects overlay sits above the terminal")
+                widget = widget.get_parent()
+            if not terminal.effects.enabled:
+                raise AssertionError("visual effects were not enabled")
+            if shutil.which("xdotool"):
+                # Real X input: the pointer hit-test must reach VTE even with
+                # effects on (an overlay window used to swallow scrolling).
+                received = []
+                handler = terminal.terminal.connect(
+                    "scroll-event", lambda *_args: received.append(True) or False
+                )
+                while Gtk.events_pending():
+                    Gtk.main_iteration_do(False)
+                origin = terminal.terminal.get_window().get_origin()
+                x_root, y_root = origin[-2], origin[-1]
+                allocation = terminal.terminal.get_allocation()
+                subprocess.run(
+                    [
+                        "xdotool",
+                        "mousemove",
+                        str(x_root + allocation.width // 2),
+                        str(y_root + allocation.height // 2),
+                        "click",
+                        "4",
+                    ],
+                    check=False,
+                )
+                deadline = time.monotonic() + 2
+                while not received and time.monotonic() < deadline:
+                    Gtk.main_iteration_do(False)
+                terminal.terminal.disconnect(handler)
+                if not received:
+                    raise AssertionError("scrolling over the terminal did not reach VTE with effects on")
+            preferences.effects = False
+            window.preferences_changed()
             focus_target.grab_focus()
             if window.on_window_focus_in(window, None):
                 raise AssertionError("window activation event was consumed")

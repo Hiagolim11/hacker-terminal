@@ -248,12 +248,10 @@ class TerminalPane(Gtk.Box):
         self.scroller.connect("touch-event", self.on_touch_event)
         self.scroller.connect("scroll-event", self.on_terminal_scroll)
         self.scroller.add(self.terminal)
-        self.overlay = Gtk.Overlay()
-        self.overlay.add(self.scroller)
-        self.effects = EffectsLayer()
-        self.overlay.add_overlay(self.effects)
-        self.overlay.set_overlay_pass_through(self.effects, True)
-        self.pack_start(self.overlay, True, True, 0)
+        # Effects are painted on the terminal itself; an overlay window would
+        # intercept touchpad scrolling on X11.
+        self.effects = EffectsLayer(self.terminal)
+        self.pack_start(self.scroller, True, True, 0)
         self.search_bar = SearchBar(self.terminal)
         self.pack_start(self.search_bar, False, False, 0)
         self.apply_preferences(theme)

@@ -2,6 +2,12 @@
 
 Este projeto segue [Semantic Versioning](https://semver.org/).
 
+## 0.11.1
+
+- Corrige a rolagem com dois dedos no touchpad (e a roda do mouse) quando os efeitos visuais estão ligados, como no perfil Retro Hacker. A camada de efeitos ficava numa janela sobreposta que, no X11, capturava os eventos de rolagem mesmo com repasse ativado.
+- Os efeitos agora são desenhados diretamente sobre o terminal, sem nenhuma janela intermediária para cliques, toques ou rolagem.
+- Teste gráfico de regressão com evento real do X (via `xdotool`) e efeitos ligados.
+
 ## 0.11.0
 
 - Perfis personalizados: salve as configurações atuais como perfil em **Preferências → Geral** ou pela paleta de comandos.

@@ -1,4 +1,4 @@
-# Auditoria técnica — versão 0.10.0
+# Auditoria técnica — versão 0.11.1
 
 Esta revisão cobre o aplicativo GTK/VTE, scripts, metadados e empacotamento. Os testes automatizados estão em `tests/smoke.sh`.
 
@@ -51,6 +51,8 @@ Esta revisão cobre o aplicativo GTK/VTE, scripts, metadados e empacotamento. Os
 - **Erros invisíveis:** exceções em callbacks GTK só apareciam no stderr; agora ficam em log rotativo com permissão `0600`.
 - **Layout perdido em falhas:** a sessão só era salva ao fechar normalmente; agora há gravação automática periódica.
 - **Shell inválido sem saída:** um shell personalizado inexistente deixava a aba inutilizável; agora há fallback automático para o shell de login.
+
+- **Touchpad sem rolagem com efeitos ligados:** a chuva digital e as scanlines ficavam num filho de `Gtk.Overlay`, cuja janela GDK recebia a rolagem do X11 apesar de `set_overlay_pass_through`; o VTE não recebia nenhum evento. Os testes anteriores entregavam eventos sintéticos direto ao VTE e não cobriam o hit-test do X. Os efeitos passaram a ser desenhados após o VTE, e o teste agora usa eventos reais.
 
 ## Verificações
 

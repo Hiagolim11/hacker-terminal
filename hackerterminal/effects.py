@@ -8,19 +8,26 @@ from .themes import Theme
 from .runtime import GLib, Gtk
 
 
-class EffectsLayer(Gtk.DrawingArea):
-    def __init__(self) -> None:
-        super().__init__()
-        self.enabled = True
+class EffectsLayer:
+    """Paint digital rain and scanlines on top of a widget's own drawing.
+
+    The effects used to live in a Gtk.Overlay child. On X11 that child owns a
+    GdkWindow which swallowed scroll events even with pass-through enabled, so
+    two-finger touchpad scrolling stopped working whenever effects were on.
+    Drawing after the target keeps every input event on the terminal itself.
+    """
+
+    def __init__(self, target: Gtk.Widget) -> None:
+        self.target = target
+        self.enabled = False
         self.running = True
+        self.source_id = 0
         self.columns: list[dict[str, float]] = []
         self.last_width = 0
         self.matrix_rgb = (0.08, 1.0, 0.55)
         self.scanline_opacity = 0.12
-        self.connect("draw", self.on_draw)
-        self.source_id = 0
-        self.connect("destroy", self.on_destroy)
-        self.start_timer()
+        target.connect_after("draw", self.on_draw)
+        target.connect("destroy", self.on_destroy)
 
     def start_timer(self) -> None:
         if not self.source_id and self.running:
@@ -29,7 +36,7 @@ class EffectsLayer(Gtk.DrawingArea):
     def tick(self) -> bool:
         # The timer only lives while effects are on, so disabled panes stay idle.
         if self.running and self.enabled:
-            self.queue_draw()
+            self.target.queue_draw()
             return True
         self.source_id = 0
         return False
@@ -41,17 +48,18 @@ class EffectsLayer(Gtk.DrawingArea):
             self.source_id = 0
 
     def set_enabled(self, enabled: bool) -> None:
+        if enabled == self.enabled:
+            return
         self.enabled = enabled
-        self.set_no_show_all(not enabled)
-        self.set_visible(enabled)
         if enabled:
             self.start_timer()
+        self.target.queue_draw()
 
     def apply_theme(self, theme: Theme) -> None:
         value = theme.matrix_color.lstrip("#")
         self.matrix_rgb = tuple(int(value[index:index + 2], 16) / 255 for index in (0, 2, 4))
         self.scanline_opacity = theme.scanline_opacity
-        self.queue_draw()
+        self.target.queue_draw()
 
     def rebuild(self, width: int, height: int) -> None:
         self.last_width = width
@@ -65,12 +73,13 @@ class EffectsLayer(Gtk.DrawingArea):
             for index in range(count)
         ]
 
-    def on_draw(self, _widget, context) -> bool:
+    def on_draw(self, widget, context) -> bool:
         if not self.enabled:
             return False
-        width, height = self.get_allocated_width(), self.get_allocated_height()
+        width, height = widget.get_allocated_width(), widget.get_allocated_height()
         if width != self.last_width or not self.columns:
             self.rebuild(width, height)
+        context.save()
         context.select_font_face("monospace", 0, 0)
         context.set_font_size(10)
         for column in self.columns:
@@ -91,4 +100,5 @@ class EffectsLayer(Gtk.DrawingArea):
             context.move_to(0, y_position + 0.5)
             context.line_to(width, y_position + 0.5)
         context.stroke()
+        context.restore()
         return False
