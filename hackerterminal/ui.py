@@ -17,7 +17,7 @@ from .config import AppConfig, ConfigStore, Preferences
 from .constants import APP_ID, APP_NAME, VERSION
 from .constants import DEFAULT_THEME
 from .fonts import choose_font
-from .profiles import ProfileManager
+from .profiles import Profile, ProfileError, ProfileManager, profile_from_preferences
 from .project import detect_project_context
 from .runtime import Gdk, Gio, GLib, Gtk, Pango
 from .session import SessionState, SessionStore, SessionTab
@@ -68,6 +68,34 @@ def shlex_first(command: str) -> str:
     except ValueError:
         return command
     return parts[0] if parts else ""
+
+
+def show_error(parent: Gtk.Window, title: str, message: str) -> None:
+    dialog = Gtk.MessageDialog(
+        transient_for=parent,
+        modal=True,
+        message_type=Gtk.MessageType.ERROR,
+        buttons=Gtk.ButtonsType.CLOSE,
+        text=title,
+    )
+    dialog.format_secondary_text(message)
+    dialog.run()
+    dialog.destroy()
+
+
+def confirm(parent: Gtk.Window, title: str, message: str, action: str) -> bool:
+    dialog = Gtk.MessageDialog(
+        transient_for=parent,
+        modal=True,
+        message_type=Gtk.MessageType.QUESTION,
+        buttons=Gtk.ButtonsType.NONE,
+        text=title,
+    )
+    dialog.format_secondary_text(message)
+    dialog.add_buttons("Cancelar", Gtk.ResponseType.CANCEL, action, Gtk.ResponseType.OK)
+    response = dialog.run()
+    dialog.destroy()
+    return response == Gtk.ResponseType.OK
 
 
 def mark_suggested(dialog: Gtk.Dialog) -> None:
@@ -740,6 +768,91 @@ class ThemeEditorDialog(Gtk.Dialog):
         )
 
 
+class ProfileEditorDialog(Gtk.Dialog):
+    """Create a profile from the current settings, or edit a custom one."""
+
+    def __init__(self, parent: Gtk.Window, manager: ProfileManager, profile: Profile | None) -> None:
+        super().__init__(
+            title="Editar perfil" if profile else "Novo perfil",
+            transient_for=parent,
+            modal=True,
+        )
+        self.manager = manager
+        self.profile = profile
+        self.add_buttons("Cancelar", Gtk.ResponseType.CANCEL, "Salvar perfil", Gtk.ResponseType.OK)
+        mark_suggested(self)
+        self.set_default_size(500, -1)
+        page = FormPage()
+        page.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.NEVER)
+        self.get_content_area().pack_start(page, True, True, 0)
+        self.name_entry = Gtk.Entry(text=profile.name if profile else "")
+        self.name_entry.set_placeholder_text("ex.: Pentest, Projeto X")
+        self.name_entry.set_activates_default(True)
+        self.set_default_response(Gtk.ResponseType.OK)
+        self.description_entry = Gtk.Entry(text=profile.description if profile else "")
+        self.directory = Gtk.FileChooserButton(title="Diretório inicial", action=Gtk.FileChooserAction.SELECT_FOLDER)
+        start = Path(profile.working_directory).expanduser() if profile else Path.home()
+        self.directory.set_filename(str(start if start.is_dir() else Path.home()))
+        self.own_actions = Gtk.Switch(active=profile.own_actions if profile else False)
+        page.heading("PERFIL")
+        page.field("Nome", self.name_entry)
+        page.field("Descrição", self.description_entry)
+        page.field("Diretório inicial", self.directory)
+        page.field(
+            "Ações rápidas próprias",
+            self.own_actions,
+            "O perfil terá sua própria lista de ações, começando com uma cópia da atual.",
+        )
+        self.update_settings = Gtk.Switch(active=profile is None)
+        if profile is not None:
+            page.field("Atualizar com as configurações atuais", self.update_settings)
+            page.hint("Desligado mantém o tema, a fonte e os demais ajustes salvos no perfil.")
+        else:
+            page.hint(
+                "O perfil guarda o tema, a fonte, o shell, o cursor, a opacidade, os efeitos "
+                "e o painel mostrados nas Preferências."
+            )
+        self.show_all()
+
+    def directory_value(self) -> str:
+        chosen = self.directory.get_filename()
+        if not chosen:
+            return "~"
+        path = Path(chosen)
+        try:
+            return "~/" + str(path.relative_to(Path.home())) if path != Path.home() else "~"
+        except ValueError:
+            return str(path)
+
+    def save(self, current: Preferences, current_actions: ActionStore) -> Profile:
+        name = self.name_entry.get_text().strip()
+        if not name:
+            raise ProfileError("informe um nome para o perfil")
+        identifier = self.profile.identifier if self.profile else self.manager.unique_identifier(name)
+        description = self.description_entry.get_text().strip()
+        own_actions = self.own_actions.get_active()
+        if self.profile is None or self.update_settings.get_active():
+            profile = profile_from_preferences(
+                identifier, name, description, current, self.directory_value(), own_actions
+            )
+        else:
+            profile = dataclasses.replace(
+                self.profile,
+                name=name,
+                description=description,
+                working_directory=self.directory_value(),
+                own_actions=own_actions,
+                path=None,
+            )
+        had_actions = self.profile is not None and self.profile.own_actions
+        saved = self.manager.save_custom(profile)
+        actions_path = self.manager.actions_path(saved.identifier)
+        if actions_path is not None and not had_actions and not actions_path.exists():
+            # Start the profile's list from the actions in use right now.
+            ActionStore(actions_path).save(current_actions.load())
+        return saved
+
+
 class PreferencesDialog(Gtk.Dialog):
     CURSOR_SHAPES = (("block", "Bloco"), ("ibeam", "Barra"), ("underline", "Sublinhado"))
     CURSOR_BLINK = (("system", "Seguir o sistema"), ("on", "Piscar"), ("off", "Fixo"))
@@ -750,8 +863,10 @@ class PreferencesDialog(Gtk.Dialog):
         preferences: Preferences,
         theme_manager: ThemeManager,
         profile_manager: ProfileManager,
+        action_store: ActionStore | None = None,
     ) -> None:
         super().__init__(title="Preferências", transient_for=parent, modal=True)
+        self.action_store = action_store or ActionStore()
         self.preferences = preferences
         self.theme_manager = theme_manager
         self.profile_manager = profile_manager
@@ -769,13 +884,7 @@ class PreferencesDialog(Gtk.Dialog):
         self.scroller = general
         self.profile = Gtk.ComboBoxText()
         self.profile_ids: list[str] = []
-        for index, profile in enumerate(self.profile_manager.all()):
-            self.profile.append_text(profile.name)
-            self.profile_ids.append(profile.identifier)
-            if profile.identifier == preferences.profile:
-                self.profile.set_active(index)
-        if self.profile.get_active() < 0:
-            self.profile.set_active(0)
+        self.refresh_profiles(preferences.profile)
         self.panel = Gtk.Switch(active=preferences.panel_visible)
         self.restore_session = Gtk.Switch(active=preferences.restore_session)
         self.shell = Gtk.Entry(text=preferences.shell)
@@ -785,6 +894,22 @@ class PreferencesDialog(Gtk.Dialog):
         general.heading("PERFIL")
         general.field("Perfil", self.profile)
         self.profile_note = general.hint("", column=1, width=1)
+        profile_actions = Gtk.FlowBox()
+        profile_actions.set_selection_mode(Gtk.SelectionMode.NONE)
+        profile_actions.set_halign(Gtk.Align.START)
+        profile_actions.set_max_children_per_line(3)
+        profile_actions.set_column_spacing(4)
+        profile_actions.set_row_spacing(4)
+        save_profile = Gtk.Button(label="Salvar como perfil…")
+        save_profile.set_tooltip_text("Cria um perfil com as configurações mostradas neste diálogo")
+        save_profile.connect("clicked", self.new_profile)
+        self.edit_profile_button = Gtk.Button(label="Editar…")
+        self.edit_profile_button.connect("clicked", self.edit_profile)
+        self.delete_profile_button = Gtk.Button(label="Remover")
+        self.delete_profile_button.connect("clicked", self.delete_profile)
+        for button in (save_profile, self.edit_profile_button, self.delete_profile_button):
+            profile_actions.add(button)
+        general.full(profile_actions, column=1, width=1)
         general.heading("SESSÃO")
         general.field("Shell", self.shell, "Comando do shell, com argumentos. Vazio usa o shell de login.")
         self.shell_status = general.hint("", column=1, width=1)
@@ -806,6 +931,7 @@ class PreferencesDialog(Gtk.Dialog):
         self.refresh_themes(preferences.theme)
         theme_actions = Gtk.FlowBox()
         theme_actions.set_selection_mode(Gtk.SelectionMode.NONE)
+        theme_actions.set_halign(Gtk.Align.START)
         theme_actions.set_max_children_per_line(5)
         theme_actions.set_column_spacing(4)
         theme_actions.set_row_spacing(4)
@@ -878,7 +1004,7 @@ class PreferencesDialog(Gtk.Dialog):
         self.shortcuts_editor = ShortcutsEditor(preferences.shortcuts)
         self.pages.append_page(self.shortcuts_editor, Gtk.Label(label="Atalhos"))
 
-        self.profile.connect("changed", self.on_profile_changed)
+        self.profile_handler = self.profile.connect("changed", self.on_profile_changed)
         self.theme.connect("changed", lambda *_: self.update_theme_buttons())
         self.shell.connect("changed", lambda *_: self.update_shell_status())
         self.update_profile_note()
@@ -891,7 +1017,71 @@ class PreferencesDialog(Gtk.Dialog):
         return self.profile_ids[index] if 0 <= index < len(self.profile_ids) else "developer"
 
     def update_profile_note(self) -> None:
-        self.profile_note.set_text(self.profile_manager.get(self.selected_profile()).description)
+        profile = self.profile_manager.get(self.selected_profile())
+        note = profile.description or "Perfil personalizado."
+        if not profile.builtin:
+            note += f"\nDiretório inicial: {profile.working_directory}"
+            if profile.own_actions:
+                note += " · ações rápidas próprias"
+        self.profile_note.set_text(note)
+        custom = not profile.builtin
+        self.edit_profile_button.set_sensitive(custom)
+        self.delete_profile_button.set_sensitive(custom)
+
+    def refresh_profiles(self, selected: str) -> None:
+        """Rebuild the profile list without re-applying the selected profile."""
+        handler = getattr(self, "profile_handler", None)
+        if handler is not None:
+            self.profile.handler_block(handler)
+        self.profile.remove_all()
+        self.profile_ids = []
+        active = 0
+        for index, profile in enumerate(self.profile_manager.all()):
+            self.profile.append_text(profile.name if profile.builtin else f"{profile.name} — personalizado")
+            self.profile_ids.append(profile.identifier)
+            if profile.identifier == selected:
+                active = index
+        self.profile.set_active(active)
+        if handler is not None:
+            self.profile.handler_unblock(handler)
+
+    def new_profile(self, _button) -> None:
+        dialog = ProfileEditorDialog(self, self.profile_manager, None)
+        self.run_profile_editor(dialog)
+
+    def edit_profile(self, _button) -> None:
+        profile = self.profile_manager.get(self.selected_profile())
+        if profile.builtin:
+            return
+        self.run_profile_editor(ProfileEditorDialog(self, self.profile_manager, profile))
+
+    def run_profile_editor(self, dialog: "ProfileEditorDialog") -> None:
+        while dialog.run() == Gtk.ResponseType.OK:
+            try:
+                saved = dialog.save(self.collect(), self.action_store)
+            except ProfileError as error:
+                show_error(dialog, "Perfil inválido", str(error))
+                continue
+            self.refresh_profiles(saved.identifier)
+            self.update_profile_note()
+            break
+        dialog.destroy()
+
+    def delete_profile(self, _button) -> None:
+        profile = self.profile_manager.get(self.selected_profile())
+        if profile.builtin or not confirm(
+            self,
+            f"Remover o perfil “{profile.name}”?",
+            "As configurações e ações rápidas próprias deste perfil serão apagadas.",
+            "Remover",
+        ):
+            return
+        try:
+            self.profile_manager.delete_custom(profile.identifier)
+        except ProfileError as error:
+            show_error(self, "Não foi possível remover", str(error))
+        self.refresh_profiles("developer")
+        self.update_profile_note()
 
     def update_shell_status(self) -> None:
         value = self.shell.get_text().strip()
@@ -913,7 +1103,14 @@ class PreferencesDialog(Gtk.Dialog):
         profile = self.profile_manager.get(self.selected_profile())
         self.update_profile_note()
         self.refresh_themes(profile.theme)
-        self.font.set_font_name(f"{choose_font(self.preferences.font).family} {profile.font_size}")
+        family = profile.font if profile.font is not None else self.preferences.font
+        self.font.set_font_name(f"{choose_font(family).family} {profile.font_size}")
+        if profile.shell is not None or not profile.builtin:
+            self.shell.set_text(profile.shell or "")
+        if profile.cursor_shape is not None:
+            self.cursor_shape.set_active_id(profile.cursor_shape)
+        if profile.opacity is not None:
+            self.opacity.set_value(profile.opacity)
         self.boot.set_active(profile.boot)
         self.effects.set_active(profile.effects)
         self.sound.set_active(profile.sound)
@@ -1022,31 +1219,40 @@ class PreferencesDialog(Gtk.Dialog):
         dialog.destroy()
 
     def apply(self) -> None:
-        self.preferences.profile = self.selected_profile()
-        self.preferences.theme = self.selected_theme()
+        self.apply_to(self.preferences)
+
+    def collect(self) -> Preferences:
+        """The settings currently shown in the dialog, without saving them."""
+        snapshot = dataclasses.replace(self.preferences, shortcuts=dict(self.preferences.shortcuts))
+        self.apply_to(snapshot)
+        return snapshot
+
+    def apply_to(self, target: Preferences) -> None:
+        target.profile = self.selected_profile()
+        target.theme = self.selected_theme()
         description = Pango.FontDescription(self.font.get_font_name())
-        self.preferences.font = description.get_family()
+        target.font = description.get_family()
         size = description.get_size() // Pango.SCALE
         if size:
-            self.preferences.font_size = size
-        self.preferences.scrollback_lines = self.scrollback.get_value_as_int()
-        self.preferences.boot = self.boot.get_active()
-        self.preferences.effects = self.effects.get_active()
-        self.preferences.sound = self.sound.get_active()
-        self.preferences.panel_visible = self.panel.get_active()
-        self.preferences.restore_session = self.restore_session.get_active()
-        self.preferences.shell = self.shell.get_text().strip()
-        self.preferences.confirm_paste = self.confirm_paste.get_active()
-        self.preferences.bell_notify = self.bell_notify.get_active()
-        self.preferences.opacity = int(self.opacity.get_value())
-        self.preferences.cursor_shape = self.cursor_shape.get_active_id() or "block"
-        self.preferences.cursor_blink = self.cursor_blink.get_active_id() or "system"
-        self.preferences.bold_is_bright = self.bold_is_bright.get_active()
-        self.preferences.copy_on_select = self.copy_on_select.get_active()
-        self.preferences.scroll_on_output = self.scroll_on_output.get_active()
-        self.preferences.scroll_on_keystroke = self.scroll_on_keystroke.get_active()
-        self.preferences.shortcuts = self.shortcuts_editor.overrides()
-        self.preferences.normalize()
+            target.font_size = size
+        target.scrollback_lines = self.scrollback.get_value_as_int()
+        target.boot = self.boot.get_active()
+        target.effects = self.effects.get_active()
+        target.sound = self.sound.get_active()
+        target.panel_visible = self.panel.get_active()
+        target.restore_session = self.restore_session.get_active()
+        target.shell = self.shell.get_text().strip()
+        target.confirm_paste = self.confirm_paste.get_active()
+        target.bell_notify = self.bell_notify.get_active()
+        target.opacity = int(self.opacity.get_value())
+        target.cursor_shape = self.cursor_shape.get_active_id() or "block"
+        target.cursor_blink = self.cursor_blink.get_active_id() or "system"
+        target.bold_is_bright = self.bold_is_bright.get_active()
+        target.copy_on_select = self.copy_on_select.get_active()
+        target.scroll_on_output = self.scroll_on_output.get_active()
+        target.scroll_on_keystroke = self.scroll_on_keystroke.get_active()
+        target.shortcuts = self.shortcuts_editor.overrides()
+        target.normalize()
 
 
 class HackerTerminal(Gtk.ApplicationWindow):
@@ -1065,11 +1271,13 @@ class HackerTerminal(Gtk.ApplicationWindow):
         self.config = config
         self.preferences = config.preferences
         self.store = store
+        self.base_action_store = action_store
         self.action_store = action_store
         self.session_store = session_store
         self.theme_manager = theme_manager
         self.profile_manager = profile_manager
         self.css_provider = css_provider
+        self.action_store = self.action_store_for_profile()
         self.shortcuts = ShortcutMap(self.preferences.shortcuts)
         for error in self.shortcuts.errors:
             LOGGER.warning(error)
@@ -1207,6 +1415,32 @@ class HackerTerminal(Gtk.ApplicationWindow):
 
     def split_horizontal(self) -> None:
         self.split_active(Gtk.Orientation.HORIZONTAL)
+
+    def action_store_for_profile(self) -> ActionStore:
+        path = self.profile_manager.actions_path(self.preferences.profile)
+        return ActionStore(path) if path is not None else self.base_action_store
+
+    def sync_action_store(self) -> None:
+        store = self.action_store_for_profile()
+        if store.path == self.action_store.path:
+            return
+        self.action_store = store
+        if self.action_panel is not None:
+            self.action_panel.action_store = store
+            self.action_panel.reload_actions()
+
+    def save_profile_from_current(self) -> None:
+        dialog = ProfileEditorDialog(self, self.profile_manager, None)
+        while dialog.run() == Gtk.ResponseType.OK:
+            try:
+                saved = dialog.save(self.preferences, self.action_store)
+            except ProfileError as error:
+                show_error(dialog, "Perfil inválido", str(error))
+                continue
+            self.preferences.profile = saved.identifier
+            self.preferences_changed()
+            break
+        dialog.destroy()
 
     def enable_translucency(self) -> bool:
         screen = self.get_screen()
@@ -1594,6 +1828,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
             self.preferences,
             self.theme_manager,
             self.profile_manager,
+            self.action_store,
         )
         response = dialog.run()
         if response == Gtk.ResponseType.OK:
@@ -1626,6 +1861,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
             ("Mostrar ou ocultar ações", "Interface", self.toggle_panel),
             ("Preferências", "Interface", self.show_preferences),
             ("Editar ações rápidas", "Interface", self.show_action_editor),
+            ("Salvar configurações atuais como perfil", "Perfil", self.save_profile_from_current),
             ("Alternar painel dividido", "Terminal", self.focus_other_pane),
             ("Próxima aba", "Terminal", lambda: self.cycle_tab(1)),
             ("Aba anterior", "Terminal", lambda: self.cycle_tab(-1)),
@@ -1684,6 +1920,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
         self.load_theme_css()
         self.shortcuts = ShortcutMap(self.preferences.shortcuts)
         self.update_header_tooltips()
+        self.sync_action_store()
         if not self.store.save(self.preferences):
             LOGGER.warning("as preferências não puderam ser salvas em %s", self.store.path)
         for terminal in self.terminals():

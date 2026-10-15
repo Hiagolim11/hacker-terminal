@@ -2,6 +2,17 @@
 
 Este projeto segue [Semantic Versioning](https://semver.org/).
 
+## 0.11.0
+
+- Perfis personalizados: salve as configurações atuais como perfil em **Preferências → Geral** ou pela paleta de comandos.
+- Cada perfil guarda tema, fonte, tamanho, shell, cursor, opacidade, efeitos, painel e diretório inicial.
+- Perfis podem ter ações rápidas próprias, iniciadas como cópia da lista em uso e trocadas automaticamente junto com o perfil.
+- Editar, atualizar com as configurações atuais e remover perfis personalizados; os perfis internos continuam protegidos.
+- Perfis ficam em `~/.config/hacker-terminal/profiles/`; arquivos inválidos ou que tentem substituir um perfil interno são ignorados com aviso.
+- Diretório inicial inexistente em um perfil volta para a pasta pessoal em vez de impedir a abertura.
+- Nomes com acentos geram identificadores legíveis (`Laboratório` → `laboratorio`), também para temas.
+- `--list-profiles` indica a origem de cada perfil; `--diagnose` mostra o perfil ativo e arquivos de perfil ignorados.
+
 ## 0.10.0
 
 ### Personalização

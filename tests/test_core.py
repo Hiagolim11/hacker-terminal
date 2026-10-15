@@ -15,7 +15,7 @@ from hackerterminal.config import ConfigStore, Preferences, clamp, env_enabled
 from hackerterminal.logs import setup_logging
 from hackerterminal.runtime import Gdk
 from hackerterminal.shortcuts import DEFAULT_SHORTCUTS, ShortcutMap, accelerator_label, accelerator_name, parse_accelerator
-from hackerterminal.profiles import ProfileManager
+from hackerterminal.profiles import ProfileError, ProfileManager, load_profile, profile_from_preferences, profile_to_ini, slugify
 from hackerterminal.project import detect_project_context, find_git_root, read_git_branch
 from hackerterminal.session import SessionState, SessionStore, SessionTab
 from hackerterminal.terminal import (
@@ -443,3 +443,102 @@ class CustomThemeTests(unittest.TestCase):
     def test_translucent_css(self) -> None:
         css = ThemeManager(Path(tempfile.mkdtemp())).get("minimal-dark").css(0.8).decode()
         self.assertIn("rgba(", css)
+
+
+class CustomProfileTests(unittest.TestCase):
+    def manager(self, directory: str) -> ProfileManager:
+        return ProfileManager(Path(directory) / "profiles")
+
+    def test_capture_save_reload_and_apply(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            manager = self.manager(directory)
+            current = Preferences(
+                theme="amber-crt", font="Hack", font_size=14, shell="bash --norc",
+                cursor_shape="ibeam", opacity=80, effects=True, panel_visible=False,
+            )
+            identifier = manager.unique_identifier("Pentest Lab!")
+            self.assertEqual(identifier, "pentest-lab")
+            profile = profile_from_preferences(identifier, "Pentest Lab!", "Testes", current, directory, True)
+            saved = manager.save_custom(profile)
+            self.assertFalse(saved.builtin)
+            path = Path(directory) / "profiles" / "pentest-lab.ini"
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            reloaded = self.manager(directory).get("pentest-lab")
+            self.assertEqual(reloaded.shell, "bash --norc")
+            self.assertEqual(reloaded.opacity, 80)
+
+            target = Preferences()
+            manager.apply("pentest-lab", target)
+            self.assertEqual(
+                (target.profile, target.theme, target.font, target.font_size, target.shell),
+                ("pentest-lab", "amber-crt", "Hack", 14, "bash --norc"),
+            )
+            self.assertEqual((target.cursor_shape, target.opacity, target.effects), ("ibeam", 80, True))
+            self.assertFalse(target.panel_visible)
+            self.assertEqual(manager.working_directory("pentest-lab"), Path(directory).resolve())
+            self.assertEqual(manager.actions_path("pentest-lab"), path.with_suffix(".actions"))
+            self.assertIsNone(manager.actions_path("developer"))
+
+    def test_builtin_profiles_keep_personal_settings(self) -> None:
+        manager = ProfileManager(Path(tempfile.mkdtemp()))
+        preferences = Preferences(font="Hack", shell="fish", cursor_shape="underline", opacity=70)
+        manager.apply("focus", preferences)
+        self.assertEqual((preferences.font, preferences.shell), ("Hack", "fish"))
+        self.assertEqual((preferences.cursor_shape, preferences.opacity), ("underline", 70))
+
+    def test_custom_profile_without_font_or_shell_resets_them(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            manager = self.manager(directory)
+            manager.save_custom(profile_from_preferences("plain", "Plain", "", Preferences()))
+            preferences = Preferences(font="Hack", shell="fish")
+            manager.apply("plain", preferences)
+            self.assertIsNone(preferences.font)
+            self.assertEqual(preferences.shell, "")
+
+    def test_invalid_and_conflicting_files_are_skipped(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory) / "profiles"
+            folder.mkdir()
+            (folder / "broken.ini").write_text("[profile]\nid = Bad Id\nname = x\n", encoding="utf-8")
+            (folder / "cursor.ini").write_text("[profile]\nid = c\nname = c\ncursor_shape = star\n", encoding="utf-8")
+            (folder / "dev.ini").write_text("[profile]\nid = developer\nname = Hijack\n", encoding="utf-8")
+            manager = ProfileManager(folder)
+            self.assertEqual(len(manager.errors), 3)
+            self.assertTrue(manager.get("developer").builtin)
+            self.assertEqual(len(manager.all()), 3)
+
+    def test_builtins_are_protected_and_delete_removes_actions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            manager = self.manager(directory)
+            with self.assertRaises(ProfileError):
+                manager.save_custom(manager.get("developer"))
+            with self.assertRaises(ProfileError):
+                manager.delete_custom("retro")
+            manager.save_custom(profile_from_preferences("lab", "Lab", "", Preferences(), "~", True))
+            actions = manager.actions_path("lab")
+            self.assertTrue(ActionStore(actions).save([QuickAction("x", "X", "true")]))
+            manager.delete_custom("lab")
+            self.assertFalse(actions.exists())
+            self.assertNotIn("lab", manager.profiles)
+
+    def test_accented_names_become_readable_identifiers(self) -> None:
+        self.assertEqual(slugify("Laboratório Ágil"), "laboratorio-agil")
+        manager = ProfileManager(Path(tempfile.mkdtemp()))
+        self.assertEqual(manager.unique_identifier("日本"), "perfil")
+        self.assertEqual(manager.unique_identifier("Focus"), "focus-2")
+
+    def test_missing_directory_falls_back_to_home(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            manager = self.manager(directory)
+            manager.save_custom(profile_from_preferences("gone", "Gone", "", Preferences(), "/definitely/missing"))
+            self.assertEqual(manager.working_directory("gone"), Path.home())
+
+    def test_ini_round_trip_with_special_characters(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            profile = profile_from_preferences(
+                "pct", "Uso 100%", "linha\nquebrada", Preferences(shell="env X=%y bash")
+            )
+            path = Path(directory) / "pct.ini"
+            path.write_text(profile_to_ini(profile), encoding="utf-8")
+            loaded = load_profile(path)
+            self.assertEqual((loaded.name, loaded.description, loaded.shell), ("Uso 100%", "linha quebrada", "env X=%y bash"))

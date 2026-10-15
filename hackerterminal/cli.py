@@ -74,6 +74,10 @@ def diagnose(
     shortcuts = ShortcutMap(preferences.shortcuts)
     for error in themes.errors:
         print(f"Aviso de tema: {error}", file=sys.stderr)
+    profiles = ProfileManager()
+    print(f"Perfil: {profiles.get(preferences.profile).name} ({preferences.profile})")
+    for error in profiles.errors:
+        print(f"Aviso de perfil: {error}", file=sys.stderr)
     for error in shortcuts.errors:
         print(f"Aviso de atalho: {error}", file=sys.stderr)
     for identifiers in shortcuts.conflicts().values():
@@ -107,7 +111,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.list_profiles:
         for profile in profiles.all():
-            print(f"{profile.identifier}\t{profile.name}\t{profile.description}")
+            source = "interno" if profile.builtin else "personalizado"
+            print(f"{profile.identifier}\t{profile.name}\t{source}\t{profile.description}")
         return 0
     preferences = store.load()
     if args.profile:

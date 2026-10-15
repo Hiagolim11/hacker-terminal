@@ -24,6 +24,7 @@ from hackerterminal.ui import (
     HackerTerminal,
     HackerTerminalApp,
     PreferencesDialog,
+    ProfileEditorDialog,
     ThemeEditorDialog,
 )
 
@@ -51,7 +52,7 @@ def main() -> int:
         )
     )
     themes = ThemeManager(root / "themes")
-    profiles = ProfileManager()
+    profiles = ProfileManager(root / "profiles")
     config = AppConfig(preferences, (), root)
     provider = Gtk.CssProvider()
     provider.load_from_data(themes.get(preferences.theme).css())
@@ -142,6 +143,38 @@ def main() -> int:
                 raise AssertionError("theme was not applied immediately")
             if window.action_panel is None or window.action_panel.get_visible():
                 raise AssertionError("panel visibility preference was not applied")
+            base_actions = len(window.action_store.load())
+            editor = ProfileEditorDialog(window, profiles, None)
+            editor.name_entry.set_text("Laboratório")
+            editor.own_actions.set_active(True)
+            editor.directory.set_filename(str(root))
+            saved = editor.save(preferences, window.action_store)
+            editor.destroy()
+            if saved.identifier != "laboratorio" or not saved.own_actions:
+                raise AssertionError("custom profile was not created")
+            if Path(saved.working_directory).expanduser().resolve() != root.resolve():
+                raise AssertionError("profile working directory was not stored")
+            preferences.profile = saved.identifier
+            window.preferences_changed()
+            if window.action_store.path != profiles.actions_path(saved.identifier):
+                raise AssertionError("profile actions were not activated")
+            if len(window.action_panel.action_buttons) != base_actions:
+                raise AssertionError("profile actions did not start as a copy of the current list")
+            window.action_store.save([QuickAction("lab", "Lab", "true")])
+            window.action_panel.reload_actions()
+            profiles.apply("developer", preferences)
+            window.preferences_changed()
+            if window.action_store is not action_store or len(window.action_panel.action_buttons) != base_actions:
+                raise AssertionError("switching profile did not restore the shared actions")
+            prefs_dialog = PreferencesDialog(window, preferences, themes, profiles)
+            prefs_dialog.refresh_profiles("laboratorio")
+            prefs_dialog.update_profile_note()
+            if not prefs_dialog.delete_profile_button.get_sensitive():
+                raise AssertionError("custom profile cannot be removed from the dialog")
+            if prefs_dialog.collect().profile != "laboratorio":
+                raise AssertionError("dialog snapshot does not reflect the selected profile")
+            prefs_dialog.destroy()
+            profiles.delete_custom("laboratorio")
             frame = window.frame_for_pane(terminal)
             window.close_page(frame, force=True)
             if window.notebook.get_n_pages() != 2:

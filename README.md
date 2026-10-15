@@ -16,7 +16,7 @@ Um terminal retrô, leve e nativo para Linux, construído com Python, GTK 3 e VT
 - sessões em abas, pesquisa no histórico e títulos dinâmicos;
 - divisões horizontais e verticais com restauração do layout;
 - cinco temas integrados e suporte a temas personalizados importáveis;
-- perfis Desenvolvimento, Foco e Retro Hacker;
+- perfis Desenvolvimento, Foco e Retro Hacker, além de perfis personalizados com ações próprias;
 - ações rápidas personalizáveis e paleta de comandos pesquisável;
 - herança de diretório e restauração segura da sessão anterior;
 - links com `Ctrl+clique` e contexto de branch Git/ambiente virtual;
@@ -86,7 +86,7 @@ Isso instala tudo somente para o usuário atual em `~/.local`, cria o comando `h
 Para instalar o pacote pronto no Kali, Debian ou Ubuntu:
 
 ```bash
-sudo apt install ./hacker-terminal_0.10.0_all.deb
+sudo apt install ./hacker-terminal_0.11.0_all.deb
 ```
 
 O uso de `apt` é recomendado porque ele resolve automaticamente as dependências. Para gerar novamente o pacote a partir do código-fonte:
@@ -133,6 +133,19 @@ fullscreen =
 ```
 
 Use `./run.sh --list-shortcuts` para ver os identificadores e as teclas em uso.
+
+### Perfis personalizados
+
+Em **Preferências → Geral**, ajuste tema, fonte, shell, cursor e os demais itens nas outras abas e clique em **Salvar como perfil…**. Escolha nome, descrição e diretório inicial. Ative **Ações rápidas próprias** para que o perfil tenha uma lista separada de ações, iniciada como cópia da atual.
+
+Também é possível salvar pela paleta (`Ctrl+Shift+P` → "Salvar configurações atuais como perfil"). Para trocar de perfil, use as Preferências, a paleta ou a linha de comando:
+
+```bash
+./run.sh --list-profiles
+./run.sh --profile pentest
+```
+
+Os perfis ficam em `~/.config/hacker-terminal/profiles/<id>.ini`, e as ações próprias em `<id>.actions`. O diretório inicial é usado ao abrir o terminal com o perfil.
 
 ### Editor de temas
 

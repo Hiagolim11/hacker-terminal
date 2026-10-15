@@ -6,6 +6,7 @@ import configparser
 import os
 import re
 import tempfile
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,6 +15,12 @@ from .constants import DEFAULT_THEME
 
 THEME_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,47}$")
 HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def slugify(text: str) -> str:
+    """ASCII identifier from a display name: "Laboratório Ágil" -> "laboratorio-agil"."""
+    ascii_text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", "-", ascii_text.casefold()).strip("-")[:40]
 
 
 class ThemeError(ValueError):
@@ -279,7 +286,7 @@ class ThemeManager:
         return theme is not None and not theme.builtin
 
     def unique_identifier(self, name: str) -> str:
-        base = re.sub(r"[^a-z0-9]+", "-", name.casefold()).strip("-")[:40] or "tema"
+        base = slugify(name) or "tema"
         if not base[0].isalnum():
             base = f"tema-{base}"
         candidate = base
