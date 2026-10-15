@@ -85,11 +85,12 @@ Por cima desse motor maduro, ele adiciona uma camada pensada para quem passa o d
 <td width="50%" valign="top">
 
 ### 🎨 Aparência
-- 5 temas internos + temas próprios
+- 13 temas internos — incluindo 8 temas **Fósforo** no estilo Cool Retro Term — e temas próprios
 - **Editor visual de temas** (interface, terminal e 16 cores ANSI)
 - Detecção automática de **Nerd Fonts** e glifos Powerline
 - Cursor, negrito e opacidade configuráveis
 - Layout responsivo: o painel lateral se recolhe em janelas estreitas
+- Visual de **monitor CRT**: brilho do fósforo, curvatura, vinheta, ruído e cintilação
 - Efeitos retrô opcionais: boot, chuva digital, scanlines
 
 </td>
@@ -126,9 +127,15 @@ Por cima desse motor maduro, ele adiciona uma camada pensada para quem passa o d
 
 <div align="center">
 
-**Cinco temas internos** — Minimal Dark, Matrix Green, Cyberpunk Purple, Amber CRT e Ice Blue
+**Temas Fósforo** — inspirados no Cool Retro Term, com brilho, curvatura do tubo, vinheta e ruído
 
-<img src="docs/screenshots/themes.png" alt="Os cinco temas internos" width="100%">
+<img src="docs/screenshots/phosphor.png" alt="Os oito temas Fósforo" width="100%">
+
+<br><br>
+
+**Temas clássicos** — Minimal Dark, Matrix Green, Cyberpunk Purple, Amber CRT e Ice Blue
+
+<img src="docs/screenshots/themes.png" alt="Os temas clássicos" width="100%">
 
 <br><br>
 
@@ -223,7 +230,7 @@ hacker-terminal --diagnose
 ```
 
 ```text
-Hacker Terminal 0.13.0
+Hacker Terminal 0.14.0
 GTK: 3.24.52
 VTE: 0.84.1
 Fonte selecionada: JetBrainsMono Nerd Font
@@ -281,6 +288,49 @@ Abra as **Preferências** com `Ctrl+,` (ou pelo ícone ⚙). Elas são organizad
 | **Terminal** | Formato e piscar do cursor, negrito com cores claras, copiar ao selecionar, histórico e rolagem |
 | **Som do teclado** | Switch, volume, som ao soltar a tecla, campo de teste e pacotes gravados |
 | **Atalhos** | Todas as combinações de teclas, com gravação por tecla e restauração |
+
+### Temas Fósforo (estilo Cool Retro Term)
+
+<img src="docs/screenshots/phosphor-amber.png" alt="Fósforo Âmbar" width="100%">
+
+Oito temas que imitam monitores de tubo. Como nas telas de fósforo, a paleta é **monocromática** — todas as cores do terminal são o mesmo tom em brilhos diferentes — e a seleção aparece em **vídeo inverso**.
+
+| Tema | Fósforo | Caráter |
+| --- | --- | --- |
+| **Fósforo Âmbar** | âmbar `#ff8100` | O clássico monitor âmbar, com brilho quente |
+| **Fósforo Verde** | verde `#0ccc68` | Monitor verde monocromático |
+| **Fósforo Verde Scanlines** | verde-limão `#7cff4f` | Linhas de varredura marcadas |
+| **Fósforo Vintage** | verde `#00ff3e` | Tubo envelhecido: muito ruído, cintilação e curvatura |
+| **Micro 1977** | verde-água `#2fff91` | Microcomputador do fim dos anos 70 |
+| **Mainframe 3270** | verde `#3cff7a` | Terminal de mainframe, nítido e discreto |
+| **DOS VGA** | branco + 16 cores VGA | Monitor colorido da era DOS |
+| **Fósforo Futurista** | azul `#729fcf` | Brilho azul intenso, quase sem ruído |
+
+Para o visual completo:
+
+1. Escolha um tema Fósforo em *Preferências → Aparência* (ou use o perfil **Retrô CRT**, que já liga tudo).
+2. Ligue **Efeitos visuais** — o brilho, a curvatura, a vinheta, o ruído e a cintilação só aparecem com eles.
+3. Use uma fonte de pixel. As Preferências mostram a fonte sugerida pelo tema e um botão **Usar** quando ela está instalada:
+
+```bash
+sudo apt install fonts-terminus-otb fonts-3270   # Terminus e IBM 3270
+```
+
+Todos os efeitos são ajustáveis por tema no editor (de 0 a 1) e, num tema próprio, no arquivo `.ini`:
+
+```ini
+[effects]
+# brilho do fósforo, vinheta, ruído estático, cintilação e curvatura do tubo
+glow = 0.55
+vignette = 0.55
+noise = 0.12
+flicker = 0.1
+curvature = 0.45
+rain = false
+```
+
+> [!NOTE]
+> Os efeitos são desenhados por cima do texto, sem deformá-lo: a curvatura é simulada pelos cantos do tubo e pela sombra nas bordas, não distorcendo o conteúdo como o Cool Retro Term faz com a GPU. Em troca, o custo fica em torno de 3% de CPU com o terminal parado.
 
 ### Temas e editor visual
 
@@ -346,6 +396,7 @@ Um perfil guarda um conjunto completo de preferências e pode ser trocado em um 
 | **Desenvolvimento** | Minimal Dark | Sóbrio, painel de ações visível, sem efeitos |
 | **Foco** | Ice Blue | Fonte maior, sem painel lateral |
 | **Retro Hacker** | Matrix Green | Boot animado, chuva digital e scanlines |
+| **Retrô CRT** | Fósforo Âmbar | Monitor de fósforo com brilho, curvatura e ruído, sem painel lateral |
 | *Seus perfis* | qualquer um | Tema, fonte, tamanho, shell, cursor, opacidade, efeitos, painel, **diretório inicial** e **ações rápidas próprias** |
 
 **Para criar:** ajuste tudo nas Preferências e clique em *Geral → **Salvar como perfil…***, ou use a paleta (*“Salvar configurações atuais como perfil”*). Ative **Ações rápidas próprias** para que o perfil tenha uma lista separada de ações (por exemplo, comandos do seu laboratório de testes), que troca automaticamente junto com o perfil.
@@ -591,7 +642,7 @@ flowchart LR
 | `keysound.py` | Síntese dos switches, pacotes gravados e o mixer de áudio |
 | `documents.py`, `viewer.py`, `openserver.py` | Leitores de planilhas, aba de visualização e o socket do `ht-open` |
 | `config.py`, `profiles.py`, `session.py`, `actions.py` | Persistência atômica de preferências, perfis, sessão e ações |
-| `effects.py` | Desenha a chuva digital e as scanlines por cima do VTE |
+| `effects.py` | Desenha a chuva digital e o visual CRT (brilho, curvatura, vinheta, ruído) por cima do VTE |
 | `fonts.py`, `project.py`, `logs.py` | Detecção de Nerd Fonts, contexto Git/venv e log rotativo |
 
 ### O terminal

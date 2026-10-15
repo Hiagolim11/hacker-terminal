@@ -49,6 +49,29 @@ class Theme:
     ansi: tuple[str, ...]
     path: Path | None = None
     builtin: bool = False
+    # CRT look (all optional; 0 disables). Drawn only with visual effects on.
+    glow: float = 0.0        # phosphor light emitted from the screen
+    vignette: float = 0.0    # darker screen edges
+    noise: float = 0.0       # animated static
+    flicker: float = 0.0     # brightness flicker
+    curvature: float = 0.0   # rounded tube corners and inner bezel shadow
+    rain: bool = True        # digital rain
+    font: str | None = None  # suggested font family
+
+    @property
+    def animated(self) -> bool:
+        return self.rain or self.noise > 0 or self.flicker > 0
+
+    @property
+    def tube_padding(self) -> int:
+        """Inner terminal padding that keeps text clear of the tube corners."""
+        return round(4 + 10 * self.curvature) if self.curvature else 2
+
+    @property
+    def tube_radius(self) -> float:
+        # A corner arc of radius r stays off the first glyph at (p, p) while
+        # r < (2 + sqrt 2) * p, so 3 * padding is always safe.
+        return 3.0 * self.tube_padding if self.curvature else 0.0
 
     def css(self, opacity: float = 1.0) -> bytes:
         """Create GTK CSS using the theme's validated colors.
@@ -119,7 +142,7 @@ headerbar button.titlebutton:hover {{ color: {self.foreground}; background-color
 .terminal-frame paned.horizontal > .terminal-pane {{ margin: 0 6px; }}
 .terminal-frame paned.vertical > .terminal-pane {{ margin: 4px 0; }}
 .pane-inactive {{ opacity: 0.62; }}
-vte-terminal {{ background-color: transparent; color: {self.terminal_foreground}; padding: 2px; }}
+vte-terminal {{ background-color: transparent; color: {self.terminal_foreground}; padding: {self.tube_padding}px; }}
 
 notebook {{ background-color: transparent; }}
 notebook > header {{ background-color: transparent; border: 0; box-shadow: none; padding: 0 0 6px 0; }}
@@ -394,9 +417,15 @@ def theme_to_ini(theme: Theme) -> str:
         sections[section].append(f"{key} = {getattr(theme, attribute)}")
     sections["terminal"].append("ansi = " + ", ".join(theme.ansi))
     sections["effects"].append(f"scanline_opacity = {theme.scanline_opacity:g}")
+    for key in CRT_EFFECTS:
+        sections["effects"].append(f"{key} = {getattr(theme, key):g}")
+    sections["effects"].append(f"rain = {str(theme.rain).lower()}")
     name = " ".join(theme.name.split())
     author = " ".join(theme.author.split()) or "Desconhecido"
-    lines = ["[theme]", f"id = {theme.identifier}", f"name = {name}", f"author = {author}", ""]
+    lines = ["[theme]", f"id = {theme.identifier}", f"name = {name}", f"author = {author}"]
+    if theme.font:
+        lines.append(f"font = {' '.join(theme.font.split())}")
+    lines.append("")
     for section, values in sections.items():
         lines.append(f"[{section}]")
         lines.extend(values)
@@ -438,12 +467,12 @@ def load_theme(path: Path, builtin: bool = False) -> Theme:
     ansi = tuple(item.strip().lower() for item in _required(terminal, "ansi").split(","))
     if len(ansi) != 16 or any(not HEX_COLOR.fullmatch(color) for color in ansi):
         raise ThemeError("terminal.ansi deve conter exatamente 16 cores hexadecimais")
-    try:
-        opacity = float(_required(effects, "scanline_opacity"))
-    except ValueError as error:
-        raise ThemeError("effects.scanline_opacity deve ser um número") from error
-    if not 0.0 <= opacity <= 1.0:
-        raise ThemeError("effects.scanline_opacity deve estar entre 0 e 1")
+    opacity = _fraction(effects, "scanline_opacity", required=True)
+    crt = {key: _fraction(effects, key) for key in CRT_EFFECTS}
+    rain_text = effects.get("rain", "true").strip().lower()
+    if rain_text not in ("true", "false", "1", "0", "yes", "no", "on", "off"):
+        raise ThemeError("effects.rain deve ser true ou false")
+    font = " ".join(metadata.get("font", "").split()) or None
 
     return Theme(
         identifier, name, author,
@@ -454,7 +483,22 @@ def load_theme(path: Path, builtin: bool = False) -> Theme:
         _color(terminal, "foreground"), _color(terminal, "cursor"),
         _color(terminal, "selection_background"), _color(terminal, "selection_foreground"),
         _color(effects, "matrix_color"), opacity, ansi, path, builtin,
+        rain=rain_text in ("true", "1", "yes", "on"), font=font, **crt,
     )
+
+
+CRT_EFFECTS = ("glow", "vignette", "noise", "flicker", "curvature")
+
+
+def _fraction(section: configparser.SectionProxy, key: str, required: bool = False) -> float:
+    text = _required(section, key) if required else section.get(key, "0").strip() or "0"
+    try:
+        value = float(text)
+    except ValueError as error:
+        raise ThemeError(f"effects.{key} deve ser um número") from error
+    if not 0.0 <= value <= 1.0:
+        raise ThemeError(f"effects.{key} deve estar entre 0 e 1")
+    return value
 
 
 def _atomic_copy(source: Path, destination: Path) -> None:

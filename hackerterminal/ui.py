@@ -18,7 +18,7 @@ from .audio import SoundPlayer, make_tone
 from .config import AppConfig, ConfigStore, Preferences
 from .constants import APP_ID, APP_NAME, VERSION
 from .constants import DEFAULT_THEME
-from .fonts import choose_font
+from .fonts import choose_font, installed_font_families
 from .documents import kind_of
 from .openserver import SOCKET_ENV, OpenServer
 from .keysound import (
@@ -101,6 +101,17 @@ def install_sound_pack(source: Path) -> str:
     except OSError as error:
         raise PackError(f"não foi possível copiar o pacote: {error}") from error
     return destination.name
+
+
+CRT_LABELS = (
+    ("glow", "Brilho do fósforo"),
+    ("vignette", "Vinheta"),
+    ("noise", "Ruído estático"),
+    ("flicker", "Cintilação"),
+    ("curvature", "Curvatura da tela"),
+)
+# Debian/Kali packages for fonts suggested by the built-in themes.
+FONT_PACKAGES = {"terminus": "fonts-terminus-otb", "ibm 3270": "fonts-3270"}
 
 
 def shlex_first(command: str) -> str:
@@ -726,7 +737,7 @@ class ThemeEditorDialog(Gtk.Dialog):
         "cursor": "Cursor",
         "selection_background": "Fundo da seleção",
         "selection_foreground": "Texto da seleção",
-        "matrix_color": "Chuva digital",
+        "matrix_color": "Cor da chuva digital",
     }
     ANSI_NAMES = ("Preto", "Vermelho", "Verde", "Amarelo", "Azul", "Magenta", "Ciano", "Branco")
 
@@ -761,6 +772,20 @@ class ThemeEditorDialog(Gtk.Dialog):
         self.scanlines.set_digits(2)
         self.scanlines.set_value(base.scanline_opacity)
         page.field("Intensidade das scanlines", self.scanlines)
+        self.crt: dict[str, Gtk.Scale] = {}
+        page.heading("TELA CRT (com efeitos visuais ligados)")
+        for key, label in CRT_LABELS:
+            scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 1, 0.05)
+            scale.set_digits(2)
+            scale.set_value(getattr(base, key))
+            scale.set_value_pos(Gtk.PositionType.RIGHT)
+            self.crt[key] = scale
+            page.field(label, scale)
+        self.rain = Gtk.Switch(active=base.rain)
+        page.field("Mostrar chuva digital", self.rain)
+        self.font_entry = Gtk.Entry(text=base.font or "")
+        self.font_entry.set_placeholder_text("Opcional, ex.: Terminus")
+        page.field("Fonte sugerida", self.font_entry)
         page.heading("PALETA ANSI")
         ansi_grid = Gtk.Grid(column_spacing=6, row_spacing=4, column_homogeneous=True)
         self.ansi: list[Gtk.ColorButton] = []
@@ -802,6 +827,9 @@ class ThemeEditorDialog(Gtk.Dialog):
             name=name,
             author=self.author_entry.get_text().strip() or "Desconhecido",
             scanline_opacity=round(self.scanlines.get_value(), 2),
+            rain=self.rain.get_active(),
+            font=self.font_entry.get_text().strip() or None,
+            **{key: round(scale.get_value(), 2) for key, scale in self.crt.items()},
             ansi=tuple(self.hex(button) for button in self.ansi),
             path=None,
             builtin=False,
@@ -974,6 +1002,7 @@ class PreferencesDialog(Gtk.Dialog):
         theme_actions.set_selection_mode(Gtk.SelectionMode.NONE)
         theme_actions.set_halign(Gtk.Align.START)
         theme_actions.set_max_children_per_line(5)
+        theme_actions.set_min_children_per_line(3)
         theme_actions.set_column_spacing(4)
         theme_actions.set_row_spacing(4)
         self.edit_theme_button = Gtk.Button(label="Editar…")
@@ -1003,6 +1032,17 @@ class PreferencesDialog(Gtk.Dialog):
         appearance.heading("TEMA")
         appearance.field("Tema", self.theme)
         appearance.full(theme_actions, column=1, width=1)
+        suggestion = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.font_suggestion = Gtk.Label(xalign=0)
+        self.font_suggestion.set_line_wrap(True)
+        self.font_suggestion.get_style_context().add_class("panel-hint")
+        self.use_suggested_font = Gtk.Button(label="Usar")
+        self.use_suggested_font.connect("clicked", self.apply_suggested_font)
+        suggestion.pack_start(self.font_suggestion, True, True, 0)
+        suggestion.pack_start(self.use_suggested_font, False, False, 0)
+        self.font_suggestion.set_no_show_all(True)
+        self.use_suggested_font.set_no_show_all(True)
+        appearance.full(suggestion, column=1, width=1)
         appearance.field("Fonte", self.font)
         appearance.field("Opacidade do fundo (%)", self.opacity)
         composited = parent.get_screen() is not None and parent.get_screen().is_composited()
@@ -1098,6 +1138,7 @@ class PreferencesDialog(Gtk.Dialog):
 
         self.profile_handler = self.profile.connect("changed", self.on_profile_changed)
         self.theme.connect("changed", lambda *_: self.update_theme_buttons())
+        self.effects.connect("notify::active", lambda *_: self.update_font_suggestion())
         self.shell.connect("changed", lambda *_: self.update_shell_status())
         self.update_profile_note()
         self.update_theme_buttons()
@@ -1245,7 +1286,33 @@ class PreferencesDialog(Gtk.Dialog):
         except (OSError, GLib.Error) as error:
             LOGGER.warning("não foi possível abrir %s: %s", folder, error)
 
+    def update_font_suggestion(self) -> None:
+        theme = self.theme_manager.get(self.selected_theme())
+        notes = []
+        installed = None
+        if theme.font:
+            installed = installed_font_families().get(theme.font.casefold())
+            if installed:
+                notes.append(f"Fonte sugerida: {installed}.")
+            else:
+                package = FONT_PACKAGES.get(theme.font.casefold())
+                hint = f" — instale o pacote {package}" if package else ""
+                notes.append(f"Fonte sugerida: {theme.font} (não instalada{hint}).")
+        if (theme.curvature or theme.glow or theme.noise) and not self.effects.get_active():
+            notes.append("Ligue os Efeitos visuais para o brilho, a curvatura e o ruído da tela.")
+        self.font_suggestion.set_text(" ".join(notes))
+        self.font_suggestion.set_visible(bool(notes))
+        self.use_suggested_font.set_visible(installed is not None)
+        self.suggested_font = installed
+
+    def apply_suggested_font(self, _button) -> None:
+        if not getattr(self, "suggested_font", None):
+            return
+        size = Pango.FontDescription(self.font.get_font_name()).get_size() // Pango.SCALE or 12
+        self.font.set_font_name(f"{self.suggested_font} {size}")
+
     def update_theme_buttons(self) -> None:
+        self.update_font_suggestion()
         custom = self.theme_manager.is_custom(self.selected_theme())
         self.edit_theme_button.set_label("Editar…" if custom else "Duplicar…")
         self.edit_theme_button.set_tooltip_text(

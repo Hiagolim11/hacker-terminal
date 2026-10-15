@@ -1,4 +1,4 @@
-# Auditoria técnica — versão 0.13.0
+# Auditoria técnica — versão 0.14.0
 
 Esta revisão cobre o aplicativo GTK/VTE, scripts, metadados e empacotamento. Os testes automatizados estão em `tests/smoke.sh`.
 
@@ -60,6 +60,9 @@ Esta revisão cobre o aplicativo GTK/VTE, scripts, metadados e empacotamento. Os
 - **Leitura de planilhas limitada:** a primeira versão lia o CSV inteiro em memória (8,7 s e 358 MB de pico para 300 mil linhas, segurando o GIL). Agora é em fluxo (~0,1 s e 9 MB); XLSX usa a dimensão declarada e há um orçamento de linhas percorridas para XLSX sem dimensão e ODS.
 - **PATH redefinido pelo shell de login:** o `/etc/profile` do Kali reescreve o `PATH`, então o `ht-open` é instalado em um diretório padrão em vez de depender do ambiente herdado.
 - **Socket UNIX:** caminho limitado a 108 bytes com alternativa automática, diretórios inseguros ignorados e sockets de processos encerrados removidos.
+
+- **Padding do terminal ignorado:** o VTE registra seu próprio CSS (padding de 1 px) com prioridade de aplicação, empatando com o do app e vencendo; o recuo do tema nunca tinha efeito. O CSS do app usa agora prioridade 601. Com a curvatura dos temas CRT isso cortava a primeira letra; o raio do canto é limitado a 3× o recuo, o que mantém o texto sempre visível (há teste para isso).
+- **Custo dos efeitos CRT:** brilho, vinheta e curvatura são renderizados uma vez em superfícies em cache; a cada quadro só há cópias e o ruído usa texturas fixas. Medido ~3% de CPU parado, abaixo da chuva digital (~7%).
 
 ## Verificações
 

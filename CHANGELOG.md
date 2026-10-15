@@ -2,6 +2,17 @@
 
 Este projeto segue [Semantic Versioning](https://semver.org/).
 
+## 0.14.0
+
+- Oito temas **Fósforo**, inspirados no Cool Retro Term: Fósforo Âmbar, Fósforo Verde, Fósforo Verde Scanlines, Fósforo Vintage, Micro 1977, Mainframe 3270, DOS VGA e Fósforo Futurista.
+- Visual de monitor CRT com os efeitos visuais ligados: brilho do fósforo, vinheta, ruído estático, cintilação, curvatura do tubo com cantos arredondados, sombra interna e reflexo, além de scanlines.
+- Paletas monocromáticas como num tubo real (todas as cores ANSI no mesmo tom, variando só o brilho) e seleção em vídeo inverso; o DOS VGA usa a paleta de 16 cores do VGA.
+- Novo perfil **Retrô CRT**, que aplica o Fósforo Âmbar com efeitos, animação de abertura e sem painel lateral.
+- Os temas podem sugerir uma fonte: as Preferências mostram a sugestão, o pacote a instalar e um botão **Usar** quando ela já está instalada.
+- O editor de temas ganhou controles para brilho, vinheta, ruído, cintilação, curvatura, chuva digital e fonte sugerida; o formato `.ini` aceita essas chaves opcionais em `[effects]` e `font` em `[theme]`.
+- Leve: as camadas estáticas são desenhadas uma vez por tamanho e tema e reaproveitadas; o ruído usa texturas pré-geradas; um tema sem partes animadas não mantém timer. Medido: ~3% de CPU parado com os efeitos CRT, contra ~7% da chuva digital, e 0% com efeitos desligados.
+- Corrige o recuo interno do terminal: o padding definido pelo tema nunca era aplicado, porque o VTE instala o próprio CSS com a mesma prioridade; o CSS do app passa a usar prioridade de aplicação + 1 (o `gtk.css` do usuário continua prevalecendo).
+
 ## 0.13.0
 
 - Visualizador de imagens e planilhas em abas, ao lado do terminal de origem: `ht-open ARQUIVO`, `Ctrl+clique` em nomes de arquivo na saída (por exemplo, de um `ls`), menu do botão direito ou a paleta de comandos.

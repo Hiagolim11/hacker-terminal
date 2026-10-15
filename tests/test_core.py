@@ -267,7 +267,7 @@ class ThemeTests(unittest.TestCase):
     def test_builtin_themes_are_valid_and_complete(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             manager = ThemeManager(Path(directory))
-            self.assertEqual(len(manager.all()), 5)
+            self.assertEqual(len(manager.all()), 13)  # 5 classic + 8 phosphor
             self.assertFalse(manager.errors)
             for theme in manager.all():
                 self.assertEqual(len(theme.ansi), 16)
@@ -509,7 +509,7 @@ class CustomProfileTests(unittest.TestCase):
             manager = ProfileManager(folder)
             self.assertEqual(len(manager.errors), 3)
             self.assertTrue(manager.get("developer").builtin)
-            self.assertEqual(len(manager.all()), 3)
+            self.assertEqual(len(manager.all()), 4)
 
     def test_builtins_are_protected_and_delete_removes_actions(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1010,3 +1010,75 @@ class OpenServerTests(unittest.TestCase):
         finally:
             server.stop()
             directory.chmod(0o700)
+
+
+class PhosphorThemeTests(unittest.TestCase):
+    PHOSPHOR = (
+        "phosphor-amber", "phosphor-green", "phosphor-scanlines", "phosphor-vintage",
+        "phosphor-1977", "phosphor-mainframe", "phosphor-dos", "phosphor-futuristic",
+    )
+
+    def manager(self) -> ThemeManager:
+        return ThemeManager(Path(tempfile.mkdtemp()))
+
+    def test_all_phosphor_themes_load_with_crt_settings(self) -> None:
+        manager = self.manager()
+        self.assertFalse(manager.errors)
+        for identifier in self.PHOSPHOR:
+            theme = manager.get(identifier)
+            self.assertEqual(theme.identifier, identifier)
+            self.assertFalse(theme.rain, identifier)
+            self.assertGreater(theme.curvature, 0, identifier)
+            self.assertGreater(theme.glow, 0, identifier)
+            # Inverse video selection, like a real tube.
+            self.assertEqual(theme.selection_foreground, theme.terminal_background, identifier)
+
+    def test_monochrome_tubes_use_a_single_hue(self) -> None:
+        import colorsys
+
+        manager = self.manager()
+        for identifier in set(self.PHOSPHOR) - {"phosphor-dos"}:
+            theme = manager.get(identifier)
+            hues = set()
+            for color in theme.ansi[1:7] + theme.ansi[9:14]:
+                red, green, blue = (int(color[index:index + 2], 16) / 255 for index in (1, 3, 5))
+                hues.add(colorsys.rgb_to_hsv(red, green, blue)[0])
+            # Integer rounding of scaled colors moves the hue by a hair only.
+            self.assertLess(max(hues) - min(hues), 0.02, f"{identifier}: {sorted(hues)}")
+
+    def test_existing_themes_are_unchanged(self) -> None:
+        theme = self.manager().get("matrix-green")
+        self.assertTrue(theme.rain)
+        self.assertEqual((theme.glow, theme.vignette, theme.noise, theme.flicker, theme.curvature), (0, 0, 0, 0, 0))
+        self.assertIsNone(theme.font)
+        self.assertEqual(theme.tube_padding, 2)
+
+    def test_tube_corners_never_cover_text(self) -> None:
+        import math
+
+        for identifier in self.PHOSPHOR:
+            theme = self.manager().get(identifier)
+            padding, radius = theme.tube_padding, theme.tube_radius
+            # The first glyph's corner (padding, padding) must lie inside the corner arc.
+            self.assertLessEqual(math.hypot(radius - padding, radius - padding), radius, identifier)
+            self.assertIn(f"padding: {padding}px", theme.css().decode())
+
+    def test_crt_values_round_trip_and_are_validated(self) -> None:
+        manager = self.manager()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "copy.ini"
+            source = manager.get("phosphor-vintage")
+            path.write_text(theme_to_ini(source), encoding="utf-8")
+            loaded = load_theme(path)
+            self.assertEqual(dataclasses.replace(loaded, path=None), dataclasses.replace(source, path=None, builtin=False))
+            text = theme_to_ini(source)
+            for broken in (text.replace("noise = 0.4", "noise = 1.5"), text.replace("rain = false", "rain = talvez"),
+                           text.replace("glow = 0.5", "glow = muito")):
+                path.write_text(broken, encoding="utf-8")
+                with self.assertRaises(ThemeError):
+                    load_theme(path)
+
+    def test_crt_profile(self) -> None:
+        preferences = Preferences()
+        ProfileManager().apply("crt", preferences)
+        self.assertEqual((preferences.theme, preferences.effects, preferences.panel_visible), ("phosphor-amber", True, False))

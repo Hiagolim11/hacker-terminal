@@ -92,6 +92,17 @@ PROFILES = (
         False,
         True,
         builtin=True,
+    ),    Profile(
+        "crt",
+        "Retrô CRT",
+        "Monitor de fósforo âmbar com brilho, curvatura e ruído, inspirado no Cool Retro Term.",
+        "phosphor-amber",
+        12,
+        True,
+        True,
+        False,
+        False,
+        builtin=True,
     ),
 )
 

@@ -154,7 +154,9 @@ def main(argv: list[str] | None = None) -> int:
         settings.set_property("gtk-application-prefer-dark-theme", True)
     screen = Gdk.Screen.get_default()
     if screen is not None:
-        Gtk.StyleContext.add_provider_for_screen(screen, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        # One above APPLICATION: VTE installs its own padding at that priority on
+        # the widget, which would otherwise win; the user's gtk.css (800) still does.
+        Gtk.StyleContext.add_provider_for_screen(screen, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1)
     return HackerTerminalApp(
         config,
         store,

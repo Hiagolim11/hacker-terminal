@@ -535,6 +535,45 @@ def main() -> int:
                 terminal.terminal.disconnect(handler)
                 if not received:
                     raise AssertionError("scrolling over the terminal did not reach VTE with effects on")
+            import cairo
+            import dataclasses as _dataclasses
+
+            layer = terminal.effects
+            amber = themes.get("phosphor-amber")
+            layer.apply_theme(amber)
+            width = terminal.terminal.get_allocated_width()
+            height = terminal.terminal.get_allocated_height()
+            canvas = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
+            painter = cairo.Context(canvas)
+            painter.set_source_rgb(0.5, 0.5, 0.5)
+            painter.paint()
+            layer.on_draw(terminal.terminal, painter)
+            canvas.flush()
+            pixels = canvas.get_data()
+            stride = canvas.get_stride()
+
+            def pixel(x, y):
+                offset = y * stride + x * 4
+                return pixels[offset + 2], pixels[offset + 1], pixels[offset]  # BGRA
+
+            corner, middle = pixel(0, 0), pixel(width // 2, height // 2)
+            if max(corner) > 60:
+                raise AssertionError(f"tube corner was not darkened: {corner}")
+            if not middle[0] > middle[2]:
+                raise AssertionError(f"amber phosphor glow missing in the middle: {middle}")
+            if layer.cache_key is None or layer.shade_layer is None:
+                raise AssertionError("static CRT layers were not cached")
+            cached = layer.shade_layer
+            layer.on_draw(terminal.terminal, painter)
+            if layer.shade_layer is not cached:
+                raise AssertionError("CRT layers were rebuilt on every frame")
+            still = _dataclasses.replace(amber, noise=0.0, flicker=0.0)
+            layer.apply_theme(still)
+            if layer.source_id:
+                raise AssertionError("a theme without animation kept a timer running")
+            layer.apply_theme(amber)
+            if not layer.source_id:
+                raise AssertionError("animated CRT theme did not start its timer")
             preferences.effects = False
             window.preferences_changed()
             focus_target.grab_focus()
