@@ -56,6 +56,19 @@ if [ -z "${__HT_INTEGRATION-}" ]; then
     __ht_cmd=${__ht_cmd#*[0-9]  }
   }
 
+  __ht_urlencode() {
+    # Byte by byte, so accents and spaces become a valid file:// URI.
+    local LC_ALL=C text="$1" out="" char index
+    for (( index = 0; index < ${#text}; index++ )); do
+      char=${text:index:1}
+      case "$char" in
+        [A-Za-z0-9/._~-]) out+=$char ;;
+        *) printf -v char '%%%02X' "'$char"; out+=$char ;;
+      esac
+    done
+    REPLY=$out
+  }
+
   __ht_save_status() {
     __ht_status=$?
     __ht_armed=""  # the rest of PROMPT_COMMAND is not the user's command
@@ -80,6 +93,9 @@ if [ -z "${__HT_INTEGRATION-}" ]; then
     command=${command//$'\e'/}
     command=${command//$'\a'/}
     __ht_seq=$(( __ht_seq + 1 ))
+    # Current directory (OSC 7), also where the distro's vte.sh is missing.
+    __ht_urlencode "$PWD"
+    printf '\e]7;file://%s%s\e\\' "${HOSTNAME-}" "$REPLY"
     printf '\e]666;vte.ext.hackerterminal.mark=1|%s|%s|%s|%s|%s\e\\' \
       "$__ht_seq" "$__ht_status" "$duration" "$(( ${#lines} + 1 ))" "$command"
     __ht_cmd="" __ht_start=""
@@ -91,4 +107,9 @@ if [ -z "${__HT_INTEGRATION-}" ]; then
     trap '__ht_preexec' DEBUG
   fi
   __ht_install
+  # Flatpak: ht-open lives outside the sandbox; appended after the login
+  # files above, which may reset PATH.
+  if [ -n "${HACKER_TERMINAL_TOOLS-}" ] && [[ ":$PATH:" != *":$HACKER_TERMINAL_TOOLS:"* ]]; then
+    PATH="$PATH:$HACKER_TERMINAL_TOOLS"
+  fi
 fi

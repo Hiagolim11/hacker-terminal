@@ -239,7 +239,7 @@ hacker-terminal --diagnose
 ```
 
 ```text
-Hacker Terminal 0.15.0
+Hacker Terminal 0.16.0
 GTK: 3.24.52
 VTE: 0.84.1
 Fonte selecionada: JetBrainsMono Nerd Font
@@ -277,6 +277,9 @@ Estes são os padrões — **todos podem ser alterados** em *Preferências → A
 | `Ctrl++` / `Ctrl+=` | Aumentar fonte | | `Ctrl+-` | Diminuir fonte |
 | `Ctrl+0` | Fonte padrão | | `Ctrl` + roda | Zoom com mouse/touchpad |
 | `Ctrl+clique` | Abrir link ou visualizar arquivo | | Clique direito | Menu contextual |
+| `Ctrl+Shift+↑` / `↓` | Comando anterior / seguinte | | `Ctrl+Shift+L` | Copiar saída do último comando |
+| `Ctrl+Shift+I` | Digitar em todos os painéis | | `Ctrl+Shift+S` | Conexões SSH |
+| `Ctrl+Shift+R` | Renomear painel | | `F12` (global, opcional) | Terminal suspenso |
 
 Para listar os atalhos em uso (incluindo os seus):
 
@@ -340,6 +343,13 @@ rain = false
 
 > [!NOTE]
 > Os efeitos são desenhados por cima do texto, sem deformá-lo: a curvatura é simulada pelos cantos do tubo e pela sombra nas bordas, não distorcendo o conteúdo como o Cool Retro Term faz com a GPU. Em troca, o custo fica em torno de 3% de CPU com o terminal parado.
+
+### Temas claro e de alto contraste
+
+- **Papel (claro)** — fundo cor de papel; todas as cores ANSI têm contraste de pelo menos 4,5:1 (WCAG AA).
+- **Alto Contraste** — preto, branco e amarelo; texto com contraste de pelo menos 7:1 (WCAG AAA), e painéis inativos não são esmaecidos.
+
+Menus e diálogos acompanham o tema: claros num tema claro, escuros num escuro.
 
 ### Temas e editor visual
 
@@ -500,6 +510,8 @@ Identificadores disponíveis: `new_tab`, `close_pane`, `split_horizontal`, `spli
 
 O painel lateral traz comandos de diagnóstico local (identidade, interfaces de rede, portas, rotas, processos, SSH, saúde do sistema). Em **Editar ações…** você adiciona, edita, remove e reordena — por exemplo `make test`, `docker ps` ou `git status` — e pode exigir **confirmação** antes de ações sensíveis (marcadas com ●). Todas as ações também aparecem na paleta de comandos.
 
+Uma ação pode ter **campos**: escreva `nmap -sV {alvo}` ou `ping -c {vezes=4} {host}` (`=` define um valor padrão e torna o campo opcional). Ao executar, um formulário pede os valores e mostra o comando final; os últimos valores digitados são lembrados durante a sessão. Os valores entram protegidos por aspas, então `10.0.0.5; rm -rf ~` vira um único argumento e nunca é executado. Texto entre aspas simples (`awk '{print $1}'`) e `${VAR}` não são tratados como campos. Ações com campos aparecem com “…” no painel.
+
 ---
 
 ## 🧰 Painéis, avisos e gravação
@@ -507,6 +519,39 @@ O painel lateral traz comandos de diagnóstico local (identidade, interfaces de 
 ### Até 4 painéis por aba
 
 `Ctrl+Shift+D` divide o painel ativo lado a lado e `Ctrl+Shift+E` o divide em cima e embaixo. Como cada divisão afeta só o painel ativo, dá para montar grades — por exemplo, divida lado a lado e depois divida cada metade para ter um 2×2. `Ctrl+Shift+O` percorre os painéis, `Ctrl+Shift+W` fecha o ativo (o vizinho ocupa o espaço) e a disposição completa é restaurada na próxima vez que o terminal abrir.
+
+### Integração com o shell
+
+Com zsh ou bash, o terminal carrega pequenos ganchos (sem mexer nos seus arquivos: o `.zshrc`/`.bashrc` continua sendo lido normalmente) que marcam cada prompt. Com isso:
+
+- `Ctrl+Shift+↑` / `Ctrl+Shift+↓` pulam entre os comandos do histórico;
+- `Ctrl+Shift+L` (ou botão direito → **Copiar saída do último comando**) copia só a saída do último comando;
+- uma faixa na margem esquerda marca cada comando — na cor do tema se deu certo, **vermelha** se falhou — e a barra de status mostra `✗ SAÍDA N` após uma falha;
+- o aviso de comando longo diz se o comando deu certo ou falhou, e com qual código;
+- novas abas e divisões abrem na pasta atual.
+
+Requer VTE 0.78 ou mais novo (`hacker-terminal --diagnose` informa). Desligue em *Preferências → Geral* ou com `HACKER_TERMINAL_SHELL_INTEGRATION=0`.
+
+### Digitar em todos os painéis
+
+`Ctrl+Shift+I` (ou botão direito → **Digitar em todos os painéis da aba**) envia o que você digita para todos os painéis da aba — útil para rodar o mesmo comando em vários servidores. A moldura fica vermelha e a barra de status mostra `⇉ TRANSMITINDO PARA N` enquanto estiver ligado.
+
+### Nomes e tamanhos dos painéis
+
+`Ctrl+Shift+R` (ou botão direito → **Renomear painel…**) dá um nome a um painel, como “servidor web” ou “logs”. O nome aparece numa faixa no topo do painel (destacada no painel ativo), na aba e nos avisos. Os nomes e o tamanho de cada divisão são restaurados junto com a sessão.
+
+### Conexões SSH
+
+`Ctrl+Shift+S`, o botão ⇄ na barra ou a paleta abrem o gerenciador. Os hosts do seu `~/.ssh/config` aparecem automaticamente; em **Nova…** você salva destino, porta, chave e opções extras (por exemplo `-J bastiao`). Cada conexão abre numa aba própria, com 🔒 e o nome dela, e pode ter:
+
+- **tema próprio** — use o **Alerta Vermelho** para produção e nunca confunda as janelas;
+- **confirmação antes de conectar**.
+
+O comando é digitado no seu shell, então um erro de conexão fica visível e, ao sair do servidor, você volta ao shell local. Senhas nunca são guardadas (o `ssh` usa sua chave/agente ou pede a senha). As conexões ficam em `~/.config/hacker-terminal/ssh.ini` (permissão `0600`).
+
+### Terminal suspenso (estilo Quake)
+
+`hacker-terminal --dropdown` abre um terminal sem bordas no topo da tela; rodar de novo o esconde e o traz de volta, com as abas intactas. Em *Preferências → Geral → Terminal suspenso* você ajusta a altura, escolhe se ele some ao perder o foco e, no XFCE, cria o **atalho global** (F12 por padrão) com um clique — uma tecla já usada por outro programa nunca é substituída. Em outros ambientes, crie um atalho que execute `hacker-terminal --dropdown`. O terminal suspenso guarda a própria sessão, separada da janela principal.
 
 ### Aviso quando um comando longo termina
 

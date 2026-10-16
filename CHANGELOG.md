@@ -2,6 +2,19 @@
 
 Este projeto segue [Semantic Versioning](https://semver.org/).
 
+## 0.16.0
+
+- **Integração com o shell** (zsh e bash, automática): cada prompt é marcado. `Ctrl+Shift+↑/↓` pula entre comandos, `Ctrl+Shift+L` copia a saída do último comando, uma faixa na margem fica vermelha nos comandos que falharam, a barra de status mostra o código de saída e o aviso de comando longo diz se ele deu certo. Seus arquivos `.zshrc`/`.bashrc` continuam sendo carregados normalmente; desligue em *Preferências → Geral*. Requer VTE 0.78 ou mais novo (`--diagnose` informa); em versões antigas o terminal funciona como antes.
+- **Digitar em todos os painéis da aba** (`Ctrl+Shift+I` ou botão direito): o que você digita vai para todos os painéis; a moldura fica vermelha enquanto transmite.
+- **Gerenciador de conexões SSH** (`Ctrl+Shift+S`, botão na barra ou paleta): conexões salvas e hosts do `~/.ssh/config`, cada uma com tema próprio (novo tema **Alerta Vermelho** para produção) e confirmação opcional antes de conectar. Senhas nunca são guardadas; destinos e opções são validados contra injeção de opções.
+- **Comandos com campos** nas ações rápidas: `nmap -sV {alvo}` ou `ping -c {vezes=4} {host}` pedem os valores num formulário com prévia antes de rodar. Os valores são protegidos com aspas e nunca executam como código.
+- **Terminal suspenso estilo Quake**: `hacker-terminal --dropdown` abre e esconde um terminal no topo da tela. As Preferências configuram o atalho global no XFCE (F12 por padrão) sem roubar teclas já usadas; também há a ação “Terminal suspenso” no menu de aplicativos.
+- **Tamanho das divisões e nomes dos painéis** são lembrados na sessão. `Ctrl+Shift+R` (ou botão direito) dá um nome a um painel, mostrado numa faixa no topo dele, na aba e nos avisos.
+- Novos temas **Papel (claro)** e **Alto Contraste**, com contraste verificado (WCAG AA e AAA). Menus e diálogos seguem o tema claro ou escuro.
+- A integração informa a pasta atual ao terminal (OSC 7), e novas abas e divisões abrem na pasta onde você está. Antes, a pasta enviada pelo shell era descartada quando vinha com o nome da máquina; uma pasta de outra máquina (sessão SSH) continua sendo ignorada.
+- A faixa de boas-vindas é exibida antes do shell iniciar e não se mistura mais com o prompt.
+- Funciona em VTE sem termprops (por exemplo, Ubuntu 24.04), com a integração desligada.
+
 ## 0.15.0
 
 - **Até 4 painéis por aba**: as divisões agora se aninham (por exemplo, uma grade 2×2) e, ao fechar um painel, o vizinho ocupa o espaço. `Ctrl+Shift+O` percorre os painéis na ordem visual.

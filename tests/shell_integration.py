@@ -75,6 +75,13 @@ def check(shell: str) -> None:
     ]
     assert not any(between), f"{shell}: text between the top row and the prompt: {between}"
     assert pane.terminal.get_text_range_format(Vte.Format.TEXT, first, 0, first, 200)[0].strip(), f"{shell}: no prompt at {first}"
+    # The hooks report the directory (OSC 7), even with spaces and accents.
+    odd = home / "pasta com ação #1"
+    odd.mkdir()
+    pane.terminal.feed_child(f"cd '{odd}'\r".encode())
+    wait_for(len(pane.prompts) + 1)
+    pump(0.3)
+    assert pane.current_working_directory() == odd, f"{shell}: directory {pane.current_working_directory()}"
     window.destroy()
     print(f"{shell}: ok")
 

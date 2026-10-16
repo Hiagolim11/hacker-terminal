@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import re
 import shlex
 import shutil
+import socket
 import uuid
 from pathlib import Path
 from dataclasses import dataclass
@@ -22,6 +24,7 @@ from .keysound import KeySoundEngine
 from .fonts import FontChoice, choose_font
 from .runtime import Atk, Gdk, Gio, GLib, Gtk, Pango, Vte
 from .session import clean_name
+from .sandbox import IN_FLATPAK, export_to_host, host_command, host_shell
 from .themes import Theme
 
 LOGGER = logging.getLogger(__name__)
@@ -113,13 +116,16 @@ def integration_launch(argv: list[str], custom_shell: str) -> tuple[list[str], d
     plain = len(argv) == 1 or argv[1:] == ["-l"]
     if not plain:
         return argv, {}  # the user's own arguments win
-    if name == "zsh" and (SHELL_DIRECTORY / "zsh" / ".zshenv").is_file():
-        env = {"ZDOTDIR": str(SHELL_DIRECTORY / "zsh"), "HACKER_TERMINAL_SHELL_INTEGRATION": "zsh"}
-        if os.environ.get("ZDOTDIR"):
+    directory = host_files("shell")
+    if directory is None:
+        return argv, {}
+    if name == "zsh" and (directory / "zsh" / ".zshenv").is_file():
+        env = {"ZDOTDIR": str(directory / "zsh"), "HACKER_TERMINAL_SHELL_INTEGRATION": "zsh"}
+        if os.environ.get("ZDOTDIR") and not IN_FLATPAK:
             env["HACKER_TERMINAL_ZDOTDIR"] = os.environ["ZDOTDIR"]
         return argv, env
-    if name == "bash" and (SHELL_DIRECTORY / "bash" / "integration.bash").is_file():
-        script = str(SHELL_DIRECTORY / "bash" / "integration.bash")
+    if name == "bash" and (directory / "bash" / "integration.bash").is_file():
+        script = str(directory / "bash" / "integration.bash")
         return [argv[0], "--init-file", script, "-i"], {"HACKER_TERMINAL_SHELL_INTEGRATION": "bash"}
     return argv, {}
 
@@ -146,7 +152,18 @@ def rgba(value: str, alpha: float = 1.0) -> Gdk.RGBA:
     return color
 
 
+@functools.lru_cache(maxsize=None)
+def host_files(name: str) -> Path | None:
+    """Our files as the shell sees them: copied out of the sandbox under Flatpak."""
+    source = SHELL_DIRECTORY if name == "shell" else TOOLS_DIRECTORY
+    if not IN_FLATPAK:
+        return source
+    return export_to_host(source, name)
+
+
 def resolve_shell() -> str:
+    if IN_FLATPAK:
+        return host_shell()
     configured = os.environ.get("SHELL")
     if configured and Path(configured).is_file() and os.access(configured, os.X_OK):
         return configured
@@ -160,6 +177,8 @@ def shell_argv(custom: str = "", warn: bool = True) -> list[str]:
             argv = shlex.split(custom)
         except ValueError:
             argv = []
+        if argv and IN_FLATPAK:
+            return [os.path.expanduser(argv[0]), *argv[1:]]  # a host path we cannot check
         if argv and (resolved := shutil.which(os.path.expanduser(argv[0]))):
             return [resolved, *argv[1:]]
         if warn:
@@ -333,7 +352,9 @@ def path_from_file_uri(uri: str | None) -> Path | None:
     if not uri:
         return None
     parsed = urlparse(uri)
-    if parsed.scheme != "file" or parsed.netloc not in ("", "localhost"):
+    # Shells report their host name; another host means a remote (SSH) path.
+    local_names = ("", "localhost", socket.gethostname().casefold())
+    if parsed.scheme != "file" or parsed.netloc.casefold() not in local_names:
         return None
     path = Path(unquote(parsed.path))
     return path if path.is_dir() else None
@@ -450,6 +471,7 @@ class TerminalPane(Gtk.Box):
         self.banner_shown = False
         self.theme_override: Theme | None = None
         self.custom_name = ""
+        self.command_pending = False
         self.title_prefix = ""
         self.pending_input = ""
         self.last_mark_sequence = -1
@@ -599,6 +621,8 @@ class TerminalPane(Gtk.Box):
         if (TOOLS_DIRECTORY / "ht-open").is_file():
             # Appended, so a user's own command with the same name still wins.
             child_env["PATH"] = os.pathsep.join(filter(None, [child_env.get("PATH", ""), str(TOOLS_DIRECTORY)]))
+        if IN_FLATPAK:
+            argv, child_env = self.host_launch(argv, child_env)
         environment = [f"{key}={value}" for key, value in child_env.items()]
         self.spawn_cancellable = Gio.Cancellable()
         self.terminal.spawn_async(
@@ -614,6 +638,17 @@ class TerminalPane(Gtk.Box):
             self.on_spawned,
             None,
         )
+
+    def host_launch(self, argv: list[str], child_env: dict[str, str]) -> tuple[list[str], dict[str, str]]:
+        """Run on the host: pass only our own variables, the host keeps its own."""
+        ours = {key: value for key, value in child_env.items() if os.environ.get(key) != value}
+        ours.pop("PATH", None)
+        version = Vte.get_major_version() * 10000 + Vte.get_minor_version() * 100 + Vte.get_micro_version()
+        ours["VTE_VERSION"] = str(version)  # distro vte.sh hooks report the directory only then
+        tools = host_files("bin")
+        if tools is not None:
+            ours["HACKER_TERMINAL_TOOLS"] = str(tools)
+        return host_command(argv, self.config.working_directory, ours), dict(os.environ)
 
     def on_spawned(self, _terminal, process_id, error, _data) -> None:
         self.spawn_cancellable = None
@@ -728,6 +763,8 @@ class TerminalPane(Gtk.Box):
 
     def on_commit(self, _terminal, text: str, _size: int) -> None:
         """Keystrokes (and pastes) sent to this shell; mirror them when broadcasting."""
+        if "\r" in text or "\n" in text:
+            self.command_pending = True  # cleared by the next prompt mark
         if self.broadcast_peers and not self.mirroring:
             self.forward_to_peers(text.encode("utf-8", "surrogateescape"))
 
@@ -766,6 +803,7 @@ class TerminalPane(Gtk.Box):
         if sequence == self.last_mark_sequence:
             return
         self.last_mark_sequence = sequence
+        self.command_pending = False
         column, row = terminal.get_cursor_position()
         # A `clear` that wipes the scrollback renumbers rows; drop stale marks.
         first = self.first_buffer_row()
@@ -947,6 +985,10 @@ class TerminalPane(Gtk.Box):
     def has_active_process(self) -> bool:
         if not self.shell_running:
             return False
+        if IN_FLATPAK:
+            # The host's processes are invisible here; the prompt marks tell
+            # whether a command is still running.
+            return bool(self.config.command) or (self.integrated and self.command_pending)
         return bool(self.config.command) or process_has_children(self.child_pid)
 
     def prepare_close(self) -> None:

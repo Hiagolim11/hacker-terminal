@@ -122,6 +122,12 @@ class RuntimeTests(unittest.TestCase):
             expected = Path(directory)
             self.assertEqual(path_from_file_uri(expected.as_uri()), expected)
             self.assertEqual(path_from_file_uri(expected.as_uri().replace("file://", "file://localhost")), expected)
+            import socket
+
+            local = expected.as_uri().replace("file://", f"file://{socket.gethostname()}")
+            self.assertEqual(path_from_file_uri(local), expected)
+            remote = expected.as_uri().replace("file://", "file://servidor-remoto")
+            self.assertIsNone(path_from_file_uri(remote))  # an SSH session's directory
         self.assertIsNone(path_from_file_uri("https://example.com/project"))
 
     def test_clickable_uri_normalization(self) -> None:

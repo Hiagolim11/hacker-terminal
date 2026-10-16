@@ -16,6 +16,22 @@ if [[ -o interactive && -z "${__HT_INTEGRATION-}" ]]; then
   zmodload zsh/datetime 2>/dev/null
   autoload -Uz add-zsh-hook add-zle-hook-widget
 
+  __ht_urlencode() {
+    # Byte by byte, so accents and spaces become a valid file:// URI.
+    emulate -L zsh
+    setopt no_multibyte
+    local text=$1 out= char
+    for char in ${(s::)text}; do
+      if [[ $char == [A-Za-z0-9/._~-] ]]; then
+        out+=$char
+      else
+        printf -v char '%%%02X' "'$char"
+        out+=$char
+      fi
+    done
+    REPLY=$out
+  }
+
   __ht_preexec() {
     __ht_cmd="$1"
     __ht_start="$EPOCHREALTIME"
@@ -29,7 +45,15 @@ if [[ -o interactive && -z "${__HT_INTEGRATION-}" ]]; then
       # hook installed earlier. add-zle-hook-widget keeps and chains theirs.
       typeset -g __ht_hooked=1
       add-zle-hook-widget line-init __ht_report
+      # Flatpak: ht-open lives outside the sandbox; appended after the login
+      # files, which may reset PATH.
+      if [[ -n "${HACKER_TERMINAL_TOOLS-}" && ":$PATH:" != *":$HACKER_TERMINAL_TOOLS:"* ]]; then
+        PATH="$PATH:$HACKER_TERMINAL_TOOLS"
+      fi
     fi
+    # Current directory (OSC 7), also where the distro's vte.sh is missing.
+    __ht_urlencode "$PWD"
+    printf '\e]7;file://%s%s\e\\' "${HOST-}" "$REPLY"
   }
 
   __ht_report() {
