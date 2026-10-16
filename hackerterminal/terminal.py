@@ -439,6 +439,8 @@ class TerminalPane(Gtk.Box):
         self.bell_pending = False
         self.recorder: OutputRecorder | None = None
         self.prompts: list[PromptMark] = []
+        self.broadcast_peers: list["TerminalPane"] = []
+        self.mirroring = False
         self.last_mark_sequence = -1
         self.on_command_done: Callable[["TerminalPane", PromptMark], None] | None = None
         self.gutter_handler = 0
@@ -475,6 +477,7 @@ class TerminalPane(Gtk.Box):
         self.terminal.connect("selection-changed", self.on_selection_changed)
         self.terminal.connect("bell", self.on_bell)
         self.terminal.connect("termprop-changed", self.on_termprop_changed)
+        self.terminal.connect("commit", self.on_commit)
         self.terminal.connect("notify::window-title", self.on_window_title_changed)
         try:
             link_regex = Vte.Regex.new_for_match(URL_PATTERN, -1, PCRE2_MULTILINE)
@@ -626,6 +629,7 @@ class TerminalPane(Gtk.Box):
             return
         if self.recorder is not None:
             self.recorder.flush()
+        # feed_child emits "commit", so broadcasting mirrors this too.
         self.terminal.feed_child((command + "\n").encode())
 
     def copy(self) -> None:
@@ -681,6 +685,24 @@ class TerminalPane(Gtk.Box):
     def current_working_directory(self) -> Path:
         current = path_from_file_uri(self.terminal.get_current_directory_uri())
         return current or self.config.working_directory
+
+    # ------------------------------------------------------------ broadcast
+
+    def on_commit(self, _terminal, text: str, _size: int) -> None:
+        """Keystrokes (and pastes) sent to this shell; mirror them when broadcasting."""
+        if self.broadcast_peers and not self.mirroring:
+            self.forward_to_peers(text.encode("utf-8", "surrogateescape"))
+
+    def forward_to_peers(self, data: bytes) -> None:
+        for peer in self.broadcast_peers:
+            if peer.shell_running and not peer.closing:
+                # feed_child emits "commit" on the peer too; without this
+                # guard the panes would echo each other forever.
+                peer.mirroring = True
+                try:
+                    peer.terminal.feed_child(data)
+                finally:
+                    peer.mirroring = False
 
     # ---------------------------------------------------- shell integration
 
@@ -970,6 +992,9 @@ class TerminalPane(Gtk.Box):
         ]
         if self.integrated:
             actions.append(("Copiar saída do último comando", lambda *_: self.on_output_action(self, "copy-last")))
+        if self.on_output_action is not None:
+            label = "Parar de digitar em todos os painéis" if self.broadcast_peers else "Digitar em todos os painéis da aba"
+            actions.append((label, lambda *_: self.on_output_action(self, "broadcast")))
         if self.on_output_action is not None:
             actions.append(("Salvar saída…", lambda *_: self.on_output_action(self, "save")))
             recording = "Parar gravação" if self.recorder is not None else "Gravar saída…"

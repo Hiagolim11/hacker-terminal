@@ -26,6 +26,7 @@ SHORTCUT_ACTIONS = (
     ShortcutAction("split_horizontal", "Dividir horizontalmente", "<Primary><Shift>d"),
     ShortcutAction("split_vertical", "Dividir verticalmente", "<Primary><Shift>e"),
     ShortcutAction("focus_other_pane", "Alternar painel dividido", "<Primary><Shift>o"),
+    ShortcutAction("broadcast", "Digitar em todos os painéis da aba", "<Primary><Shift>i"),
     ShortcutAction("next_tab", "Próxima aba", "<Primary>Page_Down"),
     ShortcutAction("previous_tab", "Aba anterior", "<Primary>Page_Up"),
     ShortcutAction("previous_prompt", "Ir ao prompt anterior", "<Primary><Shift>Up"),

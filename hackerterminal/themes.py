@@ -180,6 +180,8 @@ notebook > header > arrow {{ color: {self.muted}; }}
 .viewer-sheets > header {{ background-color: {self.surface}; border-top: 1px solid {self.border}; padding: 2px 4px; }}
 .tab-recording label {{ color: {self.danger}; }}
 .tab-recording label:first-child {{ font-weight: 700; }}
+.terminal-frame.broadcast {{ border: 2px solid {self.danger}; }}
+.tab-broadcast label {{ color: {self.danger}; font-weight: 700; }}
 .tab-done label {{ color: {self.accent}; font-weight: 700; }}
 .tab-bell label {{ color: {self.danger}; font-weight: 700; }}
 .shortcut-label {{ font-family: monospace; color: {self.accent}; }}

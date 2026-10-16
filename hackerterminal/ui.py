@@ -1539,6 +1539,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
         self.panel_auto_hidden = False
         self.panel_peek = False
         self.viewers: dict[Gtk.Widget, TerminalPane | None] = {}
+        self.broadcast_frames: set[Gtk.Frame] = set()
         self.open_server = OpenServer(self.open_file_from_pane)
         self.open_socket = self.open_server.start()
         self.saved_session = (
@@ -1637,6 +1638,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
             "split_horizontal": lambda: self.split_active(Gtk.Orientation.HORIZONTAL),
             "split_vertical": lambda: self.split_active(Gtk.Orientation.VERTICAL),
             "focus_other_pane": self.focus_other_pane,
+            "broadcast": self.toggle_broadcast,
             "next_tab": lambda: self.cycle_tab(1),
             "previous_tab": lambda: self.cycle_tab(-1),
             "previous_prompt": lambda: self.jump_to_prompt(-1),
@@ -2098,6 +2100,8 @@ class HackerTerminal(Gtk.ApplicationWindow):
             self.toggle_recording(pane)
         elif action == "copy-last":
             self.copy_last_output(pane)
+        elif action == "broadcast":
+            self.toggle_broadcast(self.frame_for_pane(pane))
 
     def copy_last_output(self, pane: TerminalPane | None = None) -> None:
         pane = pane or self.get_active_terminal()
@@ -2209,6 +2213,45 @@ class HackerTerminal(Gtk.ApplicationWindow):
             self.update_status()
         return False
 
+    # ----------------------------------------------------------- broadcast
+
+    def toggle_broadcast(self, frame: Gtk.Frame | None = None) -> None:
+        frame = frame or self.active_frame()
+        if frame is None:
+            return
+        if frame in self.broadcast_frames:
+            self.broadcast_frames.discard(frame)
+            self.show_toast("Transmissão desligada: cada painel recebe só a própria digitação.")
+        else:
+            panes = self.page_panes.get(frame, [])
+            if len(panes) < 2:
+                self.show_toast("Divida a aba (Ctrl+Shift+D ou E) para transmitir a digitação a vários painéis.")
+                return
+            self.broadcast_frames.add(frame)
+            self.show_toast(f"Transmitindo: o que você digitar vai para os {len(panes)} painéis desta aba.")
+        self.update_broadcast(frame)
+
+    def update_broadcast(self, frame: Gtk.Frame) -> None:
+        panes = self.page_panes.get(frame, [])
+        if len(panes) < 2:
+            self.broadcast_frames.discard(frame)
+        active = frame in self.broadcast_frames
+        for pane in panes:
+            pane.broadcast_peers = [peer for peer in panes if peer is not pane] if active else []
+        context = frame.get_style_context()
+        if active:
+            context.add_class("broadcast")
+        else:
+            context.remove_class("broadcast")
+        label = self.tab_labels.get(panes[0]) if panes else None
+        if label is not None:
+            box_context = label.get_parent().get_style_context()
+            if active:
+                box_context.add_class("tab-broadcast")
+            else:
+                box_context.remove_class("tab-broadcast")
+        self.update_status()
+
     def on_pane_bell(self, pane: TerminalPane) -> None:
         if self.is_active() and pane is self.get_active_terminal():
             pane.bell_pending = False
@@ -2290,7 +2333,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
             self.center_when_allocated(split)
         self.update_pane_highlight(frame)
         new_pane.spawn()
-        self.update_status()
+        self.update_broadcast(frame)
         return new_pane
 
     @staticmethod
@@ -2357,6 +2400,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
         panes.remove(pane)
         survivor = self.leaves(sibling)[0]
         self.active_panes[frame] = survivor
+        self.update_broadcast(frame)
         frame.show_all()
         self.update_pane_highlight(frame)
         survivor.terminal.grab_focus()
@@ -2379,6 +2423,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
             self.notebook.remove_page(page)
         self.page_panes.pop(frame, None)
         self.active_panes.pop(frame, None)
+        self.broadcast_frames.discard(frame)
         frame.destroy()
         for viewer, origin in list(self.viewers.items()):
             if origin in panes:
@@ -2491,6 +2536,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
             ("Aba anterior", "Terminal", lambda: self.cycle_tab(-1)),
             ("Tela cheia", "Interface", self.toggle_fullscreen),
             ("Visualizar imagem ou planilha…", "Arquivo", self.choose_file_to_view),
+            ("Digitar em todos os painéis da aba (ligar/desligar)", "Terminal", self.toggle_broadcast),
             ("Copiar saída do último comando", "Terminal", self.copy_last_output),
             ("Ir ao prompt anterior", "Terminal", lambda: self.jump_to_prompt(-1)),
             ("Ir ao próximo prompt", "Terminal", lambda: self.jump_to_prompt(1)),
@@ -2581,6 +2627,9 @@ class HackerTerminal(Gtk.ApplicationWindow):
             directory_text = shorten_home(viewer.path)
         if self.viewers:
             parts.append(f"{len(self.viewers)} {'VISUALIZAÇÃO' if len(self.viewers) == 1 else 'VISUALIZAÇÕES'}")
+        frame = self.active_frame()
+        if frame is not None and frame in self.broadcast_frames:
+            parts.insert(0, f"⇉ TRANSMITINDO PARA {len(self.page_panes.get(frame, []))}")
         recording = sum(1 for pane in self.terminals() if pane.recorder is not None)
         if recording:
             parts.insert(0, "● GRAVANDO" if recording == 1 else f"● GRAVANDO {recording}")

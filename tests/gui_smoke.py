@@ -18,7 +18,7 @@ from hackerterminal.keysound import KeySoundEngine
 from hackerterminal.actions import ActionStore, QuickAction
 from hackerterminal.config import AppConfig, ConfigStore, Preferences
 from hackerterminal.profiles import ProfileManager
-from hackerterminal.runtime import Gdk, GLib, Gtk
+from hackerterminal.runtime import Gdk, GLib, Gtk, Vte
 from hackerterminal.session import SessionState, SessionStore, SessionTab
 from hackerterminal.themes import ThemeManager
 from hackerterminal.ui import (
@@ -261,6 +261,28 @@ def main() -> int:
                 raise AssertionError("2x2 grid layout is wrong")
             if any(pane.get_allocated_width() < 100 or pane.get_allocated_height() < 60 for pane in order):
                 raise AssertionError("grid panes were not given usable space")
+            # Broadcast: one action reaches every pane exactly once, no echo loop.
+            window.on_pane_focus(top_left)
+            window.toggle_broadcast(grid_frame)
+            if grid_frame not in window.broadcast_frames or len(top_left.broadcast_peers) != 3:
+                raise AssertionError("broadcast did not link the grid panes")
+            if not wait_for(lambda: all(pane.shell_running for pane in order), 5):
+                raise AssertionError("grid shells did not start")
+            top_left.run_command("echo BROAD$((40+2))")
+
+            def outputs(pane):
+                row = pane.terminal.get_cursor_position()[1]
+                text = pane.terminal.get_text_range_format(Vte.Format.TEXT, 0, 0, row, 200)[0]
+                return [line for line in text.splitlines() if line.strip() == "BROAD42"]
+
+            if not wait_for(lambda: all(len(outputs(pane)) == 1 for pane in order), 5):
+                raise AssertionError(f"broadcast outputs per pane: {[len(outputs(pane)) for pane in order]}")
+            wait_for(lambda: False, 0.5)
+            if any(len(outputs(pane)) != 1 for pane in order):
+                raise AssertionError("a broadcast command ran more than once")
+            window.toggle_broadcast(grid_frame)
+            if any(pane.broadcast_peers for pane in order) or grid_frame.get_style_context().has_class("broadcast"):
+                raise AssertionError("broadcast did not switch off")
             infos = []
             original_info = window.show_info
             window.show_info = infos.append
