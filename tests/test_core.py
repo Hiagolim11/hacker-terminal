@@ -1082,3 +1082,34 @@ class PhosphorThemeTests(unittest.TestCase):
         preferences = Preferences()
         ProfileManager().apply("crt", preferences)
         self.assertEqual((preferences.theme, preferences.effects, preferences.panel_visible), ("phosphor-amber", True, False))
+
+
+class LongCommandTests(unittest.TestCase):
+    def test_duration_format(self) -> None:
+        from hackerterminal.terminal import format_duration
+
+        self.assertEqual(format_duration(9.6), "10 s")
+        self.assertEqual(format_duration(125), "2 min 05 s")
+        self.assertEqual(format_duration(3 * 3600 + 7 * 60), "3 h 07 min")
+
+    def test_foreground_child_reads_proc(self) -> None:
+        import subprocess
+
+        from hackerterminal.terminal import foreground_child
+
+        child = subprocess.Popen(["sleep", "2"])
+        try:
+            found = foreground_child(os.getpid())
+            self.assertEqual(found, (child.pid, "sleep"))
+        finally:
+            child.terminate()
+            child.wait()
+        self.assertIsNone(foreground_child(-1))
+        self.assertIsNone(foreground_child(999_999_999))
+
+    def test_preferences_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = ConfigStore(Path(directory) / "config.ini")
+            store.save(Preferences(notify_commands=False, notify_after=1))
+            loaded = store.load()
+            self.assertEqual((loaded.notify_commands, loaded.notify_after), (False, 3))  # clamped

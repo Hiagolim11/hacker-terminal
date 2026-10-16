@@ -111,6 +111,32 @@ def process_has_children(process_id: int) -> bool:
         return False
 
 
+def foreground_child(process_id: int) -> tuple[int, str] | None:
+    """The newest child of the shell and its command name, if one is running."""
+    if process_id <= 0:
+        return None
+    try:
+        children = Path(f"/proc/{process_id}/task/{process_id}/children").read_text(encoding="ascii").split()
+        if not children:
+            return None
+        child = int(children[-1])
+        name = Path(f"/proc/{child}/comm").read_text(encoding="utf-8", errors="replace").strip()
+    except (OSError, ValueError):
+        return None
+    return child, name or "processo"
+
+
+def format_duration(seconds: float) -> str:
+    seconds = int(round(seconds))
+    if seconds < 60:
+        return f"{seconds} s"
+    minutes, seconds = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes} min {seconds:02d} s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours} h {minutes:02d} min"
+
+
 def path_from_file_uri(uri: str | None) -> Path | None:
     if not uri:
         return None
@@ -224,6 +250,8 @@ class TerminalPane(Gtk.Box):
         self.child_pid = -1
         self.title = ""
         self.bell_pending = False
+        self.command_started: float | None = None
+        self.command_name: str | None = None
         self.zoom_scroll = 0.0
         self.used_fallback_shell = False
         self.spawn_cancellable: Gio.Cancellable | None = None
@@ -446,6 +474,19 @@ class TerminalPane(Gtk.Box):
     def current_working_directory(self) -> Path:
         current = path_from_file_uri(self.terminal.get_current_directory_uri())
         return current or self.config.working_directory
+
+    def poll_command(self, now: float) -> tuple[str, float] | None:
+        """Track the running command; report (name, duration) when it ends."""
+        running = foreground_child(self.child_pid) if self.shell_running and not self.config.command else None
+        if running is not None:
+            if self.command_started is None:
+                self.command_started, self.command_name = now, running[1]
+            return None
+        if self.command_started is None:
+            return None
+        finished = (self.command_name or "comando", now - self.command_started)
+        self.command_started = self.command_name = None
+        return finished
 
     def has_active_process(self) -> bool:
         if not self.shell_running:

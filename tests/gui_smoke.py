@@ -244,6 +244,45 @@ def main() -> int:
             if not window.open_socket or origin.extra_env.get("HACKER_TERMINAL_SOCKET") != str(window.open_socket):
                 raise AssertionError("terminal panes do not receive the ht-open socket")
 
+            # Long command notifications: drive poll_command with fake /proc data.
+            import hackerterminal.terminal as terminal_module
+
+            sent = []
+            application.send_notification = lambda key, note: sent.append((key, note))
+            watched = window.get_active_terminal()
+            running = {"child": (4242, "make")}
+            original_child = terminal_module.foreground_child
+            terminal_module.foreground_child = lambda _pid: running["child"]
+            try:
+                watched.shell_running = True
+                if watched.poll_command(100.0) is not None:
+                    raise AssertionError("a running command was reported as finished")
+                running["child"] = None
+                if watched.poll_command(130.0) != ("make", 30.0):
+                    raise AssertionError("finished command was not reported with its duration")
+                window.on_command_finished(watched, "make", 30.0)
+                box = window.tab_labels[watched].get_parent()
+                if not window.is_active() and not box.get_style_context().has_class("tab-done"):
+                    raise AssertionError("finished command did not mark the tab")
+                if not window.is_active() and (len(sent) != 1 or not sent[0][0].endswith(watched.pane_id)):
+                    raise AssertionError("finished command did not send a notification")
+                if not window.focus_pane(watched.pane_id) or window.get_active_terminal() is not watched:
+                    raise AssertionError("notification action did not focus the pane")
+                window.on_pane_focus(watched)
+                if box.get_style_context().has_class("tab-done"):
+                    raise AssertionError("finished-command mark was not cleared")
+                preferences.notify_commands = False
+                window.preferences_changed()
+                if window.command_source_id:
+                    raise AssertionError("command watch kept polling while disabled")
+                preferences.notify_commands = True
+                window.preferences_changed()
+                if not window.command_source_id:
+                    raise AssertionError("command watch did not restart")
+            finally:
+                terminal_module.foreground_child = original_child
+                del application.send_notification
+
             base_actions = len(window.action_store.load())
             editor = ProfileEditorDialog(window, profiles, None)
             editor.name_entry.set_text("Laboratório")

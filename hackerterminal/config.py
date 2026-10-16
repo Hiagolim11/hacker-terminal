@@ -80,6 +80,8 @@ class Preferences:
     confirm_paste: bool = True
     bell_notify: bool = True
     shell: str = ""
+    notify_commands: bool = True
+    notify_after: int = 10
     key_switch: str = "brown"
     key_volume: int = 70
     key_release: bool = True
@@ -99,6 +101,7 @@ class Preferences:
         valid_pack = switch.startswith("pack:") and len(switch) > 5 and "/" not in switch[5:]
         self.key_switch = switch if switch in ("red", "brown", "blue") or valid_pack else "brown"
         self.key_volume = clamp(int(self.key_volume), 0, 100)
+        self.notify_after = clamp(int(self.notify_after), 3, 3600)
         self.shortcuts = {
             str(key).strip(): str(value).strip()
             for key, value in (self.shortcuts or {}).items()
@@ -151,6 +154,8 @@ class ConfigStore:
                 confirm_paste=self._boolean(section, "confirm_paste", True),
                 bell_notify=self._boolean(section, "bell_notify", True),
                 shell=section.get("shell", ""),
+                notify_commands=self._boolean(section, "notify_commands", True),
+                notify_after=self._integer(section, "notify_after", 10),
                 key_switch=section.get("key_switch", "brown"),
                 key_volume=self._integer(section, "key_volume", 70),
                 key_release=self._boolean(section, "key_release", True),
@@ -192,6 +197,8 @@ class ConfigStore:
             "confirm_paste": str(preferences.confirm_paste).lower(),
             "bell_notify": str(preferences.bell_notify).lower(),
             "shell": preferences.shell,
+            "notify_commands": str(preferences.notify_commands).lower(),
+            "notify_after": str(preferences.notify_after),
             "key_switch": preferences.key_switch,
             "key_volume": str(preferences.key_volume),
             "key_release": str(preferences.key_release).lower(),

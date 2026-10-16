@@ -9,6 +9,7 @@ import shlex
 import shutil
 import signal
 import tempfile
+import time
 import uuid
 from pathlib import Path
 from typing import Callable
@@ -34,7 +35,7 @@ from .project import detect_project_context
 from .runtime import Gdk, Gio, GLib, Gtk, Pango
 from .session import SessionState, SessionStore, SessionTab
 from .shortcuts import MODIFIER_MASK, SHORTCUT_ACTIONS, ShortcutMap, accelerator_label, accelerator_name
-from .terminal import TerminalPane, shell_argv
+from .terminal import TerminalPane, format_duration, shell_argv
 from .themes import THEME_COLOR_FIELDS, Theme, ThemeManager, ThemeError
 
 LOGGER = logging.getLogger(__name__)
@@ -991,6 +992,15 @@ class PreferencesDialog(Gtk.Dialog):
             "Pergunta antes de colar várias linhas ou caracteres de controle.",
         )
         general.field("Avisar quando houver bell", self.bell_notify, "Marca a aba e a janela quando um programa toca o sinal.")
+        self.notify_commands = Gtk.Switch(active=preferences.notify_commands)
+        general.field(
+            "Avisar quando um comando longo terminar",
+            self.notify_commands,
+            "Notificação do sistema quando um comando termina numa aba que você não está olhando.",
+        )
+        self.notify_after = Gtk.SpinButton.new_with_range(3, 3600, 1)
+        self.notify_after.set_value(preferences.notify_after)
+        general.field("Considerar longo a partir de (segundos)", self.notify_after)
         self.pages.append_page(general, Gtk.Label(label="Geral"))
 
         # --- Aparência
@@ -1468,6 +1478,8 @@ class PreferencesDialog(Gtk.Dialog):
         target.shell = self.shell.get_text().strip()
         target.confirm_paste = self.confirm_paste.get_active()
         target.bell_notify = self.bell_notify.get_active()
+        target.notify_commands = self.notify_commands.get_active()
+        target.notify_after = self.notify_after.get_value_as_int()
         target.opacity = int(self.opacity.get_value())
         target.cursor_shape = self.cursor_shape.get_active_id() or "block"
         target.cursor_blink = self.cursor_blink.get_active_id() or "system"
@@ -1554,6 +1566,8 @@ class HackerTerminal(Gtk.ApplicationWindow):
         else:
             self.enter_terminal()
         self.status_source_id = GLib.timeout_add_seconds(3, self.refresh_status)
+        self.command_source_id = 0
+        self.update_command_watch()
         self.autosave_source_id = GLib.timeout_add_seconds(SESSION_AUTOSAVE_SECONDS, self.autosave_session)
 
     def build_header(self) -> Gtk.HeaderBar:
@@ -1983,6 +1997,60 @@ class HackerTerminal(Gtk.ApplicationWindow):
                 self.on_terminal_title_changed(pane, pane.title)
         return False
 
+    # ---------------------------------------------------- long commands
+
+    def update_command_watch(self) -> None:
+        """Poll /proc once a second, only while the feature is on."""
+        wanted = self.preferences.notify_commands and not self.closing_window
+        if wanted and not self.command_source_id:
+            self.command_source_id = GLib.timeout_add_seconds(1, self.poll_commands)
+        elif not wanted and self.command_source_id:
+            GLib.source_remove(self.command_source_id)
+            self.command_source_id = 0
+
+    def poll_commands(self) -> bool:
+        if self.closing_window or not self.preferences.notify_commands:
+            self.command_source_id = 0
+            return False
+        now = time.monotonic()
+        for pane in self.terminals():
+            try:
+                finished = pane.poll_command(now)
+                if finished is not None and finished[1] >= self.preferences.notify_after:
+                    self.on_command_finished(pane, *finished)
+            except Exception:  # noqa: BLE001 - one pane must not stop the watch
+                LOGGER.exception("falha ao verificar comandos de um painel")
+        return True
+
+    def on_command_finished(self, pane: TerminalPane, name: str, duration: float) -> None:
+        if self.is_active() and pane is self.get_active_terminal():
+            return  # the user watched it finish
+        label = self.tab_labels.get(pane)
+        if label is not None:
+            label.get_parent().get_style_context().add_class("tab-done")
+        if not self.is_active():
+            self.set_urgency_hint(True)
+        tab = label.get_text() if label is not None else "Terminal"
+        notification = Gio.Notification.new("Comando concluído")
+        notification.set_body(f"{name} terminou após {format_duration(duration)} — aba “{tab}”")
+        notification.set_icon(Gio.ThemedIcon.new(APP_NAME))
+        notification.set_default_action_and_target("app.focus-pane", GLib.Variant.new_string(pane.pane_id))
+        application = self.get_application()
+        if application is not None:
+            application.send_notification(f"command-{pane.pane_id}", notification)
+        LOGGER.info("comando concluído: %s (%s)", name, format_duration(duration))
+
+    def focus_pane(self, pane_id: str) -> bool:
+        pane = self.pane_by_id(pane_id)
+        if pane is None:
+            return False
+        frame = self.frame_for_pane(pane)
+        if frame is not None:
+            self.notebook.set_current_page(self.notebook.page_num(frame))
+        self.present()
+        pane.terminal.grab_focus()
+        return True
+
     def on_pane_bell(self, pane: TerminalPane) -> None:
         if self.is_active() and pane is self.get_active_terminal():
             pane.bell_pending = False
@@ -2003,6 +2071,11 @@ class HackerTerminal(Gtk.ApplicationWindow):
         others = [item for item in self.page_panes.get(frame, []) if item is not pane and item.bell_pending]
         if label is not None and not others:
             label.get_parent().get_style_context().remove_class("tab-bell")
+        if label is not None:
+            label.get_parent().get_style_context().remove_class("tab-done")
+        application = self.get_application()
+        if application is not None:
+            application.withdraw_notification(f"command-{pane.pane_id}")
 
     def update_pane_highlight(self, frame: Gtk.Frame) -> None:
         panes = self.page_panes.get(frame, [])
@@ -2264,6 +2337,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
         self.update_header_tooltips()
         self.sync_action_store()
         self.configure_key_sound()
+        self.update_command_watch()
         if not self.store.save(self.preferences):
             LOGGER.warning("as preferências não puderam ser salvas em %s", self.store.path)
         for terminal in self.terminals():
@@ -2322,11 +2396,14 @@ class HackerTerminal(Gtk.ApplicationWindow):
 
     def on_window_destroy(self, _window) -> None:
         self.open_server.stop()
-        for attribute in ("status_source_id", "autosave_source_id"):
+        context = GLib.MainContext.default()
+        for attribute in ("status_source_id", "autosave_source_id", "command_source_id"):
             source = getattr(self, attribute, 0)
-            if source:
+            # A callback that raised was already dropped by GLib; removing it
+            # again would warn, so only remove sources that still exist.
+            if source and context.find_source_by_id(source) is not None:
                 GLib.source_remove(source)
-                setattr(self, attribute, 0)
+            setattr(self, attribute, 0)
 
     def set_toolbar_sensitive(self, sensitive: bool) -> None:
         for button in self.toolbar_buttons:
@@ -2418,9 +2495,19 @@ class HackerTerminalApp(Gtk.Application):
 
     def do_startup(self) -> None:
         Gtk.Application.do_startup(self)
+        focus = Gio.SimpleAction.new("focus-pane", GLib.VariantType.new("s"))
+        focus.connect("activate", self.on_focus_pane)
+        self.add_action(focus)
         # Quit cleanly on SIGTERM/SIGINT so sockets and audio are released.
         for signal_number in (signal.SIGTERM, signal.SIGINT):
             GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal_number, self.on_quit_signal)
+
+    def on_focus_pane(self, _action, parameter) -> None:
+        """Clicking a "command finished" notification opens that pane."""
+        pane_id = parameter.get_string()
+        for window in self.get_windows():
+            if isinstance(window, HackerTerminal) and window.focus_pane(pane_id):
+                return
 
     def on_quit_signal(self) -> bool:
         for window in self.get_windows():
