@@ -23,6 +23,8 @@ from .constants import DEFAULT_THEME
 from .fonts import choose_font, installed_font_families
 from .connections import Connection, ConnectionError, ConnectionStore, validate as validate_connection
 from .documents import kind_of
+from .dropdown import DEFAULT_KEY, bind_xfce, launch_command, xfce_available, xfce_binding
+from .dropdown import geometry as dropdown_geometry
 from .openserver import SOCKET_ENV, OpenServer
 from .keysound import (
     SYNTH_SWITCHES,
@@ -34,7 +36,7 @@ from .keysound import (
 )
 from .profiles import Profile, ProfileError, ProfileManager, profile_from_preferences, slugify
 from .project import detect_project_context
-from .runtime import Gdk, Gio, GLib, Gtk, Pango
+from .runtime import Gdk, GdkX11, Gio, GLib, Gtk, Pango
 from .session import MAX_PANES_PER_TAB, SessionState, SessionStore, SessionTab
 from .shortcuts import MODIFIER_MASK, SHORTCUT_ACTIONS, ShortcutMap, accelerator_label, accelerator_name
 from .terminal import TerminalPane, format_duration, shell_argv
@@ -1262,6 +1264,26 @@ class PreferencesDialog(Gtk.Dialog):
         self.notify_after = Gtk.SpinButton.new_with_range(3, 3600, 1)
         self.notify_after.set_value(preferences.notify_after)
         general.field("Considerar longo a partir de (segundos)", self.notify_after)
+        general.heading("TERMINAL SUSPENSO")
+        self.dropdown_height = Gtk.SpinButton.new_with_range(25, 90, 5)
+        self.dropdown_height.set_value(preferences.dropdown_height)
+        general.field("Altura (% da tela)", self.dropdown_height)
+        self.dropdown_autohide = Gtk.Switch(active=preferences.dropdown_autohide)
+        general.field("Esconder ao perder o foco", self.dropdown_autohide)
+        command = launch_command()
+        if xfce_available():
+            shortcut_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            self.dropdown_key = Gtk.Entry(text=DEFAULT_KEY, width_chars=10)
+            self.dropdown_key.set_tooltip_text("Formato GTK: F12, <Super>grave, <Primary><Alt>t…")
+            bind_button = Gtk.Button(label="Associar no XFCE")
+            bind_button.connect("clicked", lambda *_: self.bind_dropdown_key(command))
+            shortcut_row.pack_start(self.dropdown_key, False, False, 0)
+            shortcut_row.pack_start(bind_button, False, False, 0)
+            current = xfce_binding(DEFAULT_KEY)
+            state = "já configurado" if current and "--dropdown" in current else "ainda não configurado"
+            general.field("Atalho global", shortcut_row, f"{DEFAULT_KEY}: {state}. O atalho executa: {command}")
+        else:
+            general.hint(f"Para usar como terminal suspenso, crie um atalho global no seu ambiente gráfico que execute: {command}")
         self.pages.append_page(general, Gtk.Label(label="Geral"))
 
         # --- Aparência
@@ -1419,6 +1441,25 @@ class PreferencesDialog(Gtk.Dialog):
     def selected_profile(self) -> str:
         index = self.profile.get_active()
         return self.profile_ids[index] if 0 <= index < len(self.profile_ids) else "developer"
+
+    def bind_dropdown_key(self, command: str) -> None:
+        key = self.dropdown_key.get_text().strip()
+        keyval, _modifiers = Gtk.accelerator_parse(key)
+        if not keyval:
+            show_error(self, "Atalho inválido", f"“{key}” não é um atalho do GTK (ex.: F12 ou <Super>grave).")
+            return
+        key = Gtk.accelerator_name(keyval, _modifiers)
+        ok, message = bind_xfce(key, command)
+        if not ok:
+            show_error(self, "Atalho não configurado", message)
+            return
+        dialog = Gtk.MessageDialog(
+            transient_for=self, modal=True, message_type=Gtk.MessageType.INFO,
+            buttons=Gtk.ButtonsType.OK, text="Atalho configurado",
+        )
+        dialog.format_secondary_text(message)
+        dialog.run()
+        dialog.destroy()
 
     def update_profile_note(self) -> None:
         profile = self.profile_manager.get(self.selected_profile())
@@ -1743,6 +1784,8 @@ class PreferencesDialog(Gtk.Dialog):
         target.shell_integration = self.shell_integration.get_active()
         target.command_marks = self.command_marks.get_active()
         target.notify_after = self.notify_after.get_value_as_int()
+        target.dropdown_height = self.dropdown_height.get_value_as_int()
+        target.dropdown_autohide = self.dropdown_autohide.get_active()
         target.opacity = int(self.opacity.get_value())
         target.cursor_shape = self.cursor_shape.get_active_id() or "block"
         target.cursor_blink = self.cursor_blink.get_active_id() or "system"
@@ -1765,8 +1808,10 @@ class HackerTerminal(Gtk.ApplicationWindow):
         theme_manager: ThemeManager,
         profile_manager: ProfileManager,
         css_provider: Gtk.CssProvider,
+        dropdown: bool = False,
     ) -> None:
         super().__init__(application=application, title="Hacker Terminal")
+        self.dropdown = dropdown
         self.config = config
         self.preferences = config.preferences
         self.store = store
@@ -1813,6 +1858,8 @@ class HackerTerminal(Gtk.ApplicationWindow):
         self.connect("configure-event", self.on_configure_event)
         self.connect("destroy", self.on_window_destroy)
         self.set_titlebar(self.build_header())
+        if dropdown:
+            self.setup_dropdown()
         self.update_header_tooltips()
         self.boot_sound = self.build_sounds()
         self.configure_key_sound()
@@ -2468,6 +2515,69 @@ class HackerTerminal(Gtk.ApplicationWindow):
             self.update_status()
         return False
 
+    # ------------------------------------------------------------ drop-down
+
+    def setup_dropdown(self) -> None:
+        self.set_title("Hacker Terminal (suspenso)")
+        self.set_decorated(False)
+        self.set_keep_above(True)
+        self.set_skip_taskbar_hint(True)
+        self.set_skip_pager_hint(True)
+        self.stick()
+        self.get_style_context().add_class("dropdown")
+        self.connect("focus-out-event", self.on_dropdown_focus_out)
+
+    def dropdown_area(self) -> tuple[int, int, int, int]:
+        """Work area of the monitor under the pointer (multi-monitor aware)."""
+        display = Gdk.Display.get_default()
+        monitor = None
+        seat = display.get_default_seat() if display is not None else None
+        if seat is not None and seat.get_pointer() is not None:
+            _screen, x, y = seat.get_pointer().get_position()
+            monitor = display.get_monitor_at_point(x, y)
+        if monitor is None and display is not None:
+            monitor = display.get_primary_monitor() or display.get_monitor(0)
+        if monitor is None:
+            return 0, 0, 1280, 800
+        area = monitor.get_workarea()
+        return area.x, area.y, area.width, area.height
+
+    def toggle_dropdown(self) -> None:
+        if self.get_visible() and self.is_active():
+            self.save_session()
+            self.hide()
+            return
+        x, y, width, height = dropdown_geometry(self.dropdown_area(), self.preferences.dropdown_height)
+        self.resize(width, height)
+        self.move(x, y)
+        self.show()
+        self.move(x, y)
+        # Activated from a global shortcut, the window manager may refuse
+        # focus to a plain present(); the X server time counts as user action.
+        timestamp = Gtk.get_current_event_time()
+        window = self.get_window()
+        if not timestamp and GdkX11 is not None and isinstance(window, GdkX11.X11Window):
+            timestamp = GdkX11.x11_get_server_time(window)
+        self.present_with_time(timestamp or Gdk.CURRENT_TIME)
+        pane = self.get_active_terminal()
+        if pane is not None:
+            pane.terminal.grab_focus()
+
+    def on_dropdown_focus_out(self, *_args) -> bool:
+        if self.preferences.dropdown_autohide:
+            # Deferred: a dialog of our own taking focus must not hide us.
+            GLib.timeout_add(200, self.autohide_dropdown)
+        return False
+
+    def autohide_dropdown(self) -> bool:
+        own_dialog = any(
+            window.get_visible() and window.get_transient_for() is self for window in Gtk.Window.list_toplevels()
+        )
+        if self.get_visible() and not self.is_active() and not own_dialog and not self.closing_window:
+            self.save_session()
+            self.hide()
+        return False
+
     # ----------------------------------------------------------------- SSH
 
     def show_ssh_manager(self) -> None:
@@ -3045,8 +3155,15 @@ class HackerTerminalApp(Gtk.Application):
         theme_manager: ThemeManager,
         profile_manager: ProfileManager,
         css_provider: Gtk.CssProvider,
+        dropdown: bool = False,
     ) -> None:
-        super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.NON_UNIQUE)
+        if dropdown:
+            # Unique: running --dropdown again reaches this instance over
+            # D-Bus and toggles its window instead of opening another.
+            super().__init__(application_id=APP_ID + ".Dropdown", flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
+        else:
+            super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.NON_UNIQUE)
+        self.dropdown = dropdown
         self.config = config
         self.store = store
         self.action_store = action_store
@@ -3086,6 +3203,11 @@ class HackerTerminalApp(Gtk.Application):
         Gtk.Application.do_shutdown(self)
 
     def do_activate(self) -> None:
+        if self.dropdown:
+            existing = next((w for w in self.get_windows() if isinstance(w, HackerTerminal)), None)
+            if existing is not None:
+                existing.toggle_dropdown()
+                return
         window = HackerTerminal(
             self,
             self.config,
@@ -3095,5 +3217,9 @@ class HackerTerminalApp(Gtk.Application):
             self.theme_manager,
             self.profile_manager,
             self.css_provider,
+            dropdown=self.dropdown,
         )
-        window.present()
+        if self.dropdown:
+            window.toggle_dropdown()
+        else:
+            window.present()

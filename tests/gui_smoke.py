@@ -349,6 +349,35 @@ def main() -> int:
                 raise AssertionError("the SSH theme leaked to other panes or was lost")
             window.close_page(window.frame_for_pane(ssh_pane), force=True)
 
+            # Drop-down window: undecorated, top of the work area, toggles.
+            dropdown = HackerTerminal(
+                application, config, store, action_store, SessionStore(root / "session-dropdown.json"),
+                themes, profiles, provider, dropdown=True,
+            )
+            dropdown.hide()
+            if dropdown.get_decorated() or not dropdown.get_skip_taskbar_hint() or not dropdown.get_style_context().has_class("dropdown"):
+                raise AssertionError("drop-down window is decorated or listed in the taskbar")
+            dropdown.toggle_dropdown()
+            area = dropdown.dropdown_area()
+            if not wait_for(lambda: dropdown.get_visible() and dropdown.get_size()[0] == area[2], 5):
+                raise AssertionError(f"drop-down did not span the work area: {dropdown.get_size()} vs {area}")
+            preferences.dropdown_autohide = True
+            own_dialog = Gtk.Dialog(transient_for=dropdown)
+            own_dialog.show()
+            dropdown.autohide_dropdown()
+            if not dropdown.get_visible():
+                raise AssertionError("drop-down hid while its own dialog was open")
+            own_dialog.destroy()
+            if not dropdown.is_active():
+                dropdown.autohide_dropdown()
+                if dropdown.get_visible():
+                    raise AssertionError("drop-down did not auto-hide after losing focus")
+            preferences.dropdown_autohide = False
+            dropdown.closing_window = True
+            for pane in dropdown.terminals():
+                pane.prepare_close()
+            dropdown.destroy()
+
             # Saving and recording the output (fed directly, no shell needed).
             recorded = window.get_active_terminal()
             recorded.terminal.feed(b"antes da gravacao\r\n")

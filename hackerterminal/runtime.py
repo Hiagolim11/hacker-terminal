@@ -32,9 +32,16 @@ except ImportError:
     HAS_CAIRO = False
 
 try:
+    # X11 only: the server time lets the drop-down window take focus.
+    gi.require_version("GdkX11", "3.0")
+    from gi.repository import GdkX11
+except (ImportError, ValueError):
+    GdkX11 = None
+
+try:
     gi.require_version("Gst", "1.0")
     from gi.repository import Gst
 except (ImportError, ValueError):
     Gst = None
 
-__all__ = ["HAS_CAIRO", "Atk", "Gdk", "Gio", "GLib", "Gst", "Gtk", "Pango", "PangoCairo", "Vte"]
+__all__ = ["HAS_CAIRO", "Atk", "Gdk", "GdkX11", "Gio", "GLib", "Gst", "Gtk", "Pango", "PangoCairo", "Vte"]

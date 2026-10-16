@@ -1307,3 +1307,47 @@ class CommandFieldTests(unittest.TestCase):
         command = fill('printf "%s|%s\\n" {a} "{b}"', {"a": "x y", "b": "$(touch /tmp/pwned) `id`"})
         result = subprocess.run(["bash", "-c", command], capture_output=True, text=True, check=True)
         self.assertEqual(result.stdout, "x y|$(touch /tmp/pwned) `id`\n")
+
+
+class DropdownTests(unittest.TestCase):
+    def test_geometry_spans_work_area_top(self) -> None:
+        from hackerterminal.dropdown import geometry
+
+        self.assertEqual(geometry((0, 32, 1920, 1048), 45), (0, 32, 1920, 471))
+        self.assertEqual(geometry((1920, 0, 1280, 1024), 200), (1920, 0, 1280, 921))  # clamped to 90%
+        self.assertEqual(geometry((0, 0, 800, 400), 10), (0, 0, 800, 240))  # 25% but never below 240 px
+
+    def test_preferences_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = ConfigStore(Path(directory) / "config.ini")
+            preferences = Preferences(dropdown_height=99, dropdown_autohide=True)
+            preferences.normalize()
+            self.assertEqual(preferences.dropdown_height, 90)
+            store.save(preferences)
+            loaded = store.load()
+            self.assertEqual((loaded.dropdown_height, loaded.dropdown_autohide), (90, True))
+
+    def test_xfce_binding_never_steals_a_taken_key(self) -> None:
+        from hackerterminal import dropdown
+
+        calls = []
+
+        def fake_run(argv, **_kwargs):
+            calls.append(argv)
+            stdout = "xfce4-screenshooter" if argv[-1].endswith("/Print") else ""
+            writing = "-s" in argv
+            return subprocess.CompletedProcess(argv, 0 if stdout or writing else 1, stdout, "")
+
+        with patch.object(dropdown.subprocess, "run", fake_run):
+            ok, message = dropdown.bind_xfce("Print", "hacker-terminal --dropdown")
+            self.assertFalse(ok)
+            self.assertIn("xfce4-screenshooter", message)
+            self.assertEqual(len(calls), 1)  # only the lookup, nothing written
+            ok, _message = dropdown.bind_xfce("F12", "hacker-terminal --dropdown")
+            self.assertTrue(ok)
+            self.assertEqual(calls[-1][-6:], ["/commands/custom/F12", "-n", "-t", "string", "-s", "hacker-terminal --dropdown"])
+
+    def test_launch_command_mentions_dropdown(self) -> None:
+        from hackerterminal.dropdown import launch_command
+
+        self.assertTrue(launch_command().endswith("--dropdown"))

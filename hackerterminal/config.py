@@ -84,6 +84,8 @@ class Preferences:
     command_marks: bool = True
     notify_commands: bool = True
     notify_after: int = 10
+    dropdown_height: int = 45
+    dropdown_autohide: bool = False
     key_switch: str = "brown"
     key_volume: int = 70
     key_release: bool = True
@@ -104,6 +106,7 @@ class Preferences:
         self.key_switch = switch if switch in ("red", "brown", "blue") or valid_pack else "brown"
         self.key_volume = clamp(int(self.key_volume), 0, 100)
         self.notify_after = clamp(int(self.notify_after), 3, 3600)
+        self.dropdown_height = clamp(int(self.dropdown_height), 25, 90)
         self.shortcuts = {
             str(key).strip(): str(value).strip()
             for key, value in (self.shortcuts or {}).items()
@@ -160,6 +163,8 @@ class ConfigStore:
                 command_marks=self._boolean(section, "command_marks", True),
                 notify_commands=self._boolean(section, "notify_commands", True),
                 notify_after=self._integer(section, "notify_after", 10),
+                dropdown_height=self._integer(section, "dropdown_height", 45),
+                dropdown_autohide=self._boolean(section, "dropdown_autohide", False),
                 key_switch=section.get("key_switch", "brown"),
                 key_volume=self._integer(section, "key_volume", 70),
                 key_release=self._boolean(section, "key_release", True),
@@ -205,6 +210,8 @@ class ConfigStore:
             "command_marks": str(preferences.command_marks).lower(),
             "notify_commands": str(preferences.notify_commands).lower(),
             "notify_after": str(preferences.notify_after),
+            "dropdown_height": str(preferences.dropdown_height),
+            "dropdown_autohide": str(preferences.dropdown_autohide).lower(),
             "key_switch": preferences.key_switch,
             "key_volume": str(preferences.key_volume),
             "key_release": str(preferences.key_release).lower(),

@@ -181,6 +181,7 @@ notebook > header > arrow {{ color: {self.muted}; }}
 .tab-recording label {{ color: {self.danger}; }}
 .tab-recording label:first-child {{ font-weight: 700; }}
 .terminal-frame.broadcast {{ border: 2px solid {self.danger}; }}
+window.dropdown {{ border-bottom: 2px solid {self.accent}; }}
 .tab-broadcast label {{ color: {self.danger}; font-weight: 700; }}
 .tab-done label {{ color: {self.accent}; font-weight: 700; }}
 .tab-bell label {{ color: {self.danger}; font-weight: 700; }}

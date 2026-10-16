@@ -38,6 +38,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-sound", action="store_true", help="desativa os efeitos sonoros")
     parser.add_argument("--no-panel", action="store_true", help="inicia com o painel lateral oculto")
     parser.add_argument(
+        "--dropdown",
+        action="store_true",
+        help="abre ou esconde o terminal suspenso (estilo Quake); associe a um atalho global",
+    )
+    parser.add_argument(
         "--working-directory",
         metavar="DIRETORIO",
         help="diretório inicial da sessão (padrão: pasta pessoal)",
@@ -138,6 +143,10 @@ def main(argv: list[str] | None = None) -> int:
     preferences.effects = preferences.effects and not args.no_effects and env_enabled("HACKER_TERMINAL_EFFECTS")
     preferences.sound = preferences.sound and not args.no_sound and env_enabled("HACKER_TERMINAL_SOUND")
     preferences.panel_visible = preferences.panel_visible and not args.no_panel
+    if args.dropdown:
+        # Pops up instantly and keeps its own tabs, apart from the main window.
+        preferences.boot = False
+        session_store = SessionStore(session_store.path.with_name("session-dropdown.json"))
     preferences.normalize()
     working_directory = (
         Path(args.working_directory).expanduser().resolve()
@@ -168,4 +177,5 @@ def main(argv: list[str] | None = None) -> int:
         themes,
         profiles,
         provider,
+        dropdown=args.dropdown,
     ).run([sys.argv[0]])

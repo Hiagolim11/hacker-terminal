@@ -12,3 +12,9 @@ Terminal=false
 Categories=System;TerminalEmulator;
 Keywords=terminal;kali;security;retro;vte;
 StartupNotify=true
+Actions=dropdown;
+
+[Desktop Action dropdown]
+Name=Drop-down terminal
+Name[pt_BR]=Terminal suspenso
+Exec=@EXEC@ --dropdown
