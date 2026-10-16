@@ -43,6 +43,7 @@ GTK 3 · VTE · Python · sem Electron, sem navegador, sem telemetria
   - [Som de teclado mecânico](#som-de-teclado-mecânico)
   - [Atalhos personalizados](#atalhos-personalizados)
   - [Ações rápidas](#ações-rápidas)
+- [Painéis, avisos e gravação](#-painéis-avisos-e-gravação)
 - [Visualizar imagens e planilhas](#️-visualizar-imagens-e-planilhas)
 - [Referência de configuração](#️-referência-de-configuração)
 - [Linha de comando](#-linha-de-comando)
@@ -74,7 +75,9 @@ Por cima desse motor maduro, ele adiciona uma camada pensada para quem passa o d
 ### 🖥️ Terminal
 - Shell de login real em PTY (VTE 2.91)
 - Abas reordenáveis com títulos dinâmicos
-- Divisão horizontal e vertical por aba
+- Divisões aninhadas: até 4 painéis por aba (grade 2×2)
+- Aviso quando um comando longo termina em outra aba
+- Salvar ou gravar a saída em `.txt` ou `.html` colorido
 - Histórico de 20 mil linhas (até 200 mil)
 - Pesquisa no histórico com navegação
 - Links clicáveis com `Ctrl+clique`
@@ -136,6 +139,12 @@ Por cima desse motor maduro, ele adiciona uma camada pensada para quem passa o d
 **Temas clássicos** — Minimal Dark, Matrix Green, Cyberpunk Purple, Amber CRT e Ice Blue
 
 <img src="docs/screenshots/themes.png" alt="Os temas clássicos" width="100%">
+
+<br><br>
+
+**Grade de até 4 painéis por aba**
+
+<img src="docs/screenshots/grid.png" alt="Grade 2x2 de painéis com o tema Fósforo Verde" width="100%">
 
 <br><br>
 
@@ -230,7 +239,7 @@ hacker-terminal --diagnose
 ```
 
 ```text
-Hacker Terminal 0.14.0
+Hacker Terminal 0.15.0
 GTK: 3.24.52
 VTE: 0.84.1
 Fonte selecionada: JetBrainsMono Nerd Font
@@ -262,7 +271,7 @@ Estes são os padrões — **todos podem ser alterados** em *Preferências → A
 | `Ctrl+Shift+W` | Fechar painel/aba | | `Ctrl+Shift+V` | Colar |
 | `Ctrl+Shift+D` | Dividir horizontalmente | | `Ctrl+Shift+F` | Pesquisar no histórico |
 | `Ctrl+Shift+E` | Dividir verticalmente | | `Ctrl+Shift+P` | Paleta de comandos |
-| `Ctrl+Shift+O` | Alternar painel dividido | | `Ctrl+Shift+B` | Mostrar/ocultar ações |
+| `Ctrl+Shift+O` | Próximo painel da aba | | `Ctrl+Shift+B` | Mostrar/ocultar ações |
 | `Ctrl+PageDown` | Próxima aba | | `Ctrl+,` | Preferências |
 | `Ctrl+PageUp` | Aba anterior | | `F11` | Tela cheia |
 | `Ctrl++` / `Ctrl+=` | Aumentar fonte | | `Ctrl+-` | Diminuir fonte |
@@ -493,6 +502,30 @@ O painel lateral traz comandos de diagnóstico local (identidade, interfaces de 
 
 ---
 
+## 🧰 Painéis, avisos e gravação
+
+### Até 4 painéis por aba
+
+`Ctrl+Shift+D` divide o painel ativo lado a lado e `Ctrl+Shift+E` o divide em cima e embaixo. Como cada divisão afeta só o painel ativo, dá para montar grades — por exemplo, divida lado a lado e depois divida cada metade para ter um 2×2. `Ctrl+Shift+O` percorre os painéis, `Ctrl+Shift+W` fecha o ativo (o vizinho ocupa o espaço) e a disposição completa é restaurada na próxima vez que o terminal abrir.
+
+### Aviso quando um comando longo termina
+
+Rodou uma compilação, um `nmap` ou um download e foi fazer outra coisa? Quando o comando termina numa aba que você não está olhando, a aba fica destacada e aparece uma notificação do sistema — clique nela para voltar à aba. Funciona com qualquer shell, sem configuração. Ajuste em *Preferências → Geral* (ligado por padrão, a partir de 10 segundos).
+
+### Salvar e gravar a saída
+
+No **botão direito** do terminal (ou na paleta):
+
+- **Salvar saída…** grava todo o histórico atual num arquivo.
+- **Gravar saída…** grava continuamente tudo o que aparecer a partir de agora, até você escolher **Parar gravação**. A aba e a barra de status mostram ● enquanto grava.
+
+Use a extensão **`.html`** para manter as cores do tema ou **`.txt`** para texto puro. Os arquivos são criados com permissão `0600`.
+
+> [!NOTE]
+> Durante a gravação, o histórico daquele painel fica ilimitado (o VTE o guarda em arquivos temporários compactados) para que nada se perca em saídas muito rápidas. A única exceção é um comando que gera muita saída e limpa o próprio histórico ao terminar (`seq 1 3000; clear`): a saída dele pode não ser gravada.
+
+---
+
 ## 🖼️ Visualizar imagens e planilhas
 
 Abra imagens e planilhas **sem sair do terminal**: elas aparecem numa aba de visualização ao lado do terminal de onde vieram.
@@ -569,6 +602,8 @@ Os caminhos respeitam `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME` e `XD
 | `bell_notify` | booleano | `true` | Marca aba/janela no bell |
 | `panel_visible` | booleano | `true` | Painel de ações |
 | `restore_session` | booleano | `true` | Restaura abas ao abrir |
+| `notify_commands` | booleano | `true` | Avisa quando um comando longo termina |
+| `notify_after` | 3–3600 | `10` | Segundos para um comando ser considerado longo |
 | `boot` | booleano | `false` | Animação de abertura |
 | `effects` | booleano | `false` | Chuva digital e scanlines |
 | `sound` | booleano | `false` | Som do teclado |

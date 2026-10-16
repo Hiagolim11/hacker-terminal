@@ -1,4 +1,4 @@
-# Auditoria técnica — versão 0.14.0
+# Auditoria técnica — versão 0.15.0
 
 Esta revisão cobre o aplicativo GTK/VTE, scripts, metadados e empacotamento. Os testes automatizados estão em `tests/smoke.sh`.
 
@@ -63,6 +63,9 @@ Esta revisão cobre o aplicativo GTK/VTE, scripts, metadados e empacotamento. Os
 
 - **Padding do terminal ignorado:** o VTE registra seu próprio CSS (padding de 1 px) com prioridade de aplicação, empatando com o do app e vencendo; o recuo do tema nunca tinha efeito. O CSS do app usa agora prioridade 601. Com a curvatura dos temas CRT isso cortava a primeira letra; o raio do canto é limitado a 3× o recuo, o que mantém o texto sempre visível (há teste para isso).
 - **Custo dos efeitos CRT:** brilho, vinheta e curvatura são renderizados uma vez em superfícies em cache; a cada quadro só há cópias e o ruído usa texturas fixas. Medido ~3% de CPU parado, abaixo da chuva digital (~7%).
+
+- **Notificação nunca enviada:** a primeira versão chamava `set_default_action_and_target_value`, que não existe no PyGObject (o nome é `set_default_action_and_target`); encontrado com um teste de ponta a ponta em D-Bus privado com servidor de notificações falso, que também confirmou que o clique abre a aba certa.
+- **Gravação perdia linhas:** o VTE processa uma rajada de saída de uma vez e só então avisa; com histórico limitado, 4 de cada 5 linhas de um `seq 1 5000` sumiam antes de serem gravadas. A gravação usa histórico ilimitado (em arquivos temporários compactados) e grava antes de cada comando. Limite conhecido: um único comando que gera muita saída e limpa o histórico ao terminar perde a própria saída.
 
 ## Verificações
 

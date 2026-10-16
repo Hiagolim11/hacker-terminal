@@ -2,6 +2,15 @@
 
 Este projeto segue [Semantic Versioning](https://semver.org/).
 
+## 0.15.0
+
+- **Até 4 painéis por aba**: as divisões agora se aninham (por exemplo, uma grade 2×2) e, ao fechar um painel, o vizinho ocupa o espaço. `Ctrl+Shift+O` percorre os painéis na ordem visual.
+- A sessão (formato 3) guarda a árvore de divisões completa, valida o arquivo ao carregar (dados adulterados ou pastas apagadas voltam com segurança para um painel) e continua lendo sessões das versões anteriores.
+- **Aviso de comando longo**: quando um comando que durou mais que o limite (10 s por padrão) termina numa aba que você não está olhando, a aba fica marcada e uma notificação do sistema aparece; clicar nela abre a aba certa. Funciona com qualquer shell, sem configuração (o terminal observa o processo em execução em `/proc`, uma vez por segundo, apenas com o recurso ligado).
+- **Salvar a saída** do terminal (todo o histórico) e **gravar a saída** continuamente em `.txt` ou `.html` com as cores do tema, pelo menu do botão direito ou pela paleta. Durante a gravação o histórico daquele painel fica ilimitado e as linhas são gravadas a cada segundo e antes de cada comando, para que nada se perca em saídas rápidas; a aba e a barra de status indicam a gravação.
+- Mensagens rápidas na barra de status (por exemplo, "1500 linhas salvas em ~/…") em vez de diálogos.
+- Corrige a remoção de timers já descartados pelo GLib ao fechar a janela, que podia gerar avisos.
+
 ## 0.14.0
 
 - Oito temas **Fósforo**, inspirados no Cool Retro Term: Fósforo Âmbar, Fósforo Verde, Fósforo Verde Scanlines, Fósforo Vintage, Micro 1977, Mainframe 3270, DOS VGA e Fósforo Futurista.
