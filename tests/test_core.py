@@ -1163,3 +1163,47 @@ class SplitLayoutSessionTests(unittest.TestCase):
                 "version": 2, "tabs": [{"directories": [str(left), str(right)], "orientation": "vertical"}],
             }), encoding="utf-8")
             self.assertEqual(store.load().tabs[0].tree(), ["vertical", 0, 1])
+
+
+class ShellIntegrationTests(unittest.TestCase):
+    def test_parse_mark(self) -> None:
+        from hackerterminal.terminal import parse_mark
+
+        self.assertEqual(parse_mark("1|7|2|1530|2|make %7C tee log%3B ok %25"), (7, 2, 1.53, 2, "make | tee log; ok %"))
+        self.assertEqual(parse_mark("1|8||0|1|"), (8, None, 0.0, 1, ""))
+        for broken in ("", "1", "2|1|0|0|1|x", "1|x|0|0|1|y", "1;1;0;0;1;z"):
+            self.assertIsNone(parse_mark(broken), broken)
+        self.assertEqual(parse_mark("1|1|0|0|99|x")[3], 10)  # prompt height is bounded
+
+    def test_command_rows(self) -> None:
+        from hackerterminal.terminal import PromptMark, command_extra_rows
+
+        self.assertEqual(command_extra_rows(PromptMark(10, 4, 1, "ls"), 80), 0)
+        self.assertEqual(command_extra_rows(PromptMark(10, 70, 1, "x" * 10), 80), 0)   # fills the row exactly
+        self.assertEqual(command_extra_rows(PromptMark(10, 70, 1, "x" * 11), 80), 1)   # wraps once
+        self.assertEqual(command_extra_rows(PromptMark(10, 2, 1, "for i\ndo\ndone"), 80), 2)
+
+    def test_launch_adapts_only_plain_bash_and_zsh(self) -> None:
+        from hackerterminal.terminal import SHELL_DIRECTORY, integration_launch
+
+        with patch.dict(os.environ, {"ZDOTDIR": "/meu/zdotdir"}):
+            argv, env = integration_launch(["/usr/bin/zsh", "-l"], "")
+        self.assertEqual(argv, ["/usr/bin/zsh", "-l"])
+        self.assertEqual(env["ZDOTDIR"], str(SHELL_DIRECTORY / "zsh"))
+        self.assertEqual(env["HACKER_TERMINAL_ZDOTDIR"], "/meu/zdotdir")
+        argv, env = integration_launch(["/bin/bash", "-l"], "")
+        self.assertEqual(argv, ["/bin/bash", "--init-file", str(SHELL_DIRECTORY / "bash" / "integration.bash"), "-i"])
+        self.assertEqual(integration_launch(["/bin/bash", "--norc"], "bash --norc"), (["/bin/bash", "--norc"], {}))
+        self.assertEqual(integration_launch(["/usr/bin/fish", "-l"], ""), (["/usr/bin/fish", "-l"], {}))
+        with patch.dict(os.environ, {"HACKER_TERMINAL_SHELL_INTEGRATION": "0"}):
+            self.assertEqual(integration_launch(["/bin/bash", "-l"], ""), (["/bin/bash", "-l"], {}))
+
+    def test_scripts_are_valid_shell(self) -> None:
+        import shutil
+        import subprocess
+
+        from hackerterminal.terminal import SHELL_DIRECTORY
+
+        subprocess.run(["bash", "-n", str(SHELL_DIRECTORY / "bash" / "integration.bash")], check=True)
+        if shutil.which("zsh"):
+            subprocess.run(["zsh", "-n", str(SHELL_DIRECTORY / "zsh" / ".zshenv")], check=True)

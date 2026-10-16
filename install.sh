@@ -46,6 +46,8 @@ install -d "$app_dir/hackerterminal"
 for source in "$project_dir"/hackerterminal/*.py; do
   install -m 644 "$source" "$app_dir/hackerterminal/$(basename "$source")"
 done
+install -D -m 644 "$project_dir/hackerterminal/shell/zsh/.zshenv" "$app_dir/hackerterminal/shell/zsh/.zshenv"
+install -D -m 644 "$project_dir/hackerterminal/shell/bash/integration.bash" "$app_dir/hackerterminal/shell/bash/integration.bash"
 install -d "$app_dir/hackerterminal/themes"
 for source in "$project_dir"/hackerterminal/themes/*.ini; do
   install -m 644 "$source" "$app_dir/hackerterminal/themes/$(basename "$source")"

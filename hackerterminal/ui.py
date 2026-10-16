@@ -992,6 +992,14 @@ class PreferencesDialog(Gtk.Dialog):
             "Pergunta antes de colar várias linhas ou caracteres de controle.",
         )
         general.field("Avisar quando houver bell", self.bell_notify, "Marca a aba e a janela quando um programa toca o sinal.")
+        self.shell_integration = Gtk.Switch(active=preferences.shell_integration)
+        general.field(
+            "Integração com o shell (zsh e bash)",
+            self.shell_integration,
+            "Marca cada comando: pular entre prompts, copiar a saída do último comando e avisos com o código de saída. Vale para novos painéis.",
+        )
+        self.command_marks = Gtk.Switch(active=preferences.command_marks)
+        general.field("Marcar comandos na margem", self.command_marks, "Faixa ao lado de cada comando: cor de destaque se deu certo, vermelha se falhou.")
         self.notify_commands = Gtk.Switch(active=preferences.notify_commands)
         general.field(
             "Avisar quando um comando longo terminar",
@@ -1479,6 +1487,8 @@ class PreferencesDialog(Gtk.Dialog):
         target.confirm_paste = self.confirm_paste.get_active()
         target.bell_notify = self.bell_notify.get_active()
         target.notify_commands = self.notify_commands.get_active()
+        target.shell_integration = self.shell_integration.get_active()
+        target.command_marks = self.command_marks.get_active()
         target.notify_after = self.notify_after.get_value_as_int()
         target.opacity = int(self.opacity.get_value())
         target.cursor_shape = self.cursor_shape.get_active_id() or "block"
@@ -1629,6 +1639,9 @@ class HackerTerminal(Gtk.ApplicationWindow):
             "focus_other_pane": self.focus_other_pane,
             "next_tab": lambda: self.cycle_tab(1),
             "previous_tab": lambda: self.cycle_tab(-1),
+            "previous_prompt": lambda: self.jump_to_prompt(-1),
+            "next_prompt": lambda: self.jump_to_prompt(1),
+            "copy_last_output": self.copy_last_output,
             "copy": on_terminal("copy"),
             "paste": on_terminal("paste"),
             "search": self.search_active,
@@ -1983,9 +1996,8 @@ class HackerTerminal(Gtk.ApplicationWindow):
         )
         if self.open_socket is not None:
             pane.extra_env[SOCKET_ENV] = str(self.open_socket)
-        pane.on_output_action = lambda source, action: (
-            self.save_output_dialog(source) if action == "save" else self.toggle_recording(source)
-        )
+        pane.on_output_action = self.on_output_action
+        pane.on_command_done = self.on_shell_command_done
         return pane
 
     def active_frame(self) -> Gtk.Frame | None:
@@ -2032,13 +2044,16 @@ class HackerTerminal(Gtk.ApplicationWindow):
         for pane in self.terminals():
             try:
                 finished = pane.poll_command(now)
-                if finished is not None and finished[1] >= self.preferences.notify_after:
+                # Panes with shell integration report exact results themselves.
+                if finished is not None and not pane.integrated and finished[1] >= self.preferences.notify_after:
                     self.on_command_finished(pane, *finished)
             except Exception:  # noqa: BLE001 - one pane must not stop the watch
                 LOGGER.exception("falha ao verificar comandos de um painel")
         return True
 
-    def on_command_finished(self, pane: TerminalPane, name: str, duration: float) -> None:
+    def on_command_finished(
+        self, pane: TerminalPane, name: str, duration: float, status: int | None = None, command: str = ""
+    ) -> None:
         if self.is_active() and pane is self.get_active_terminal():
             return  # the user watched it finish
         label = self.tab_labels.get(pane)
@@ -2047,8 +2062,15 @@ class HackerTerminal(Gtk.ApplicationWindow):
         if not self.is_active():
             self.set_urgency_hint(True)
         tab = label.get_text() if label is not None else "Terminal"
-        notification = Gio.Notification.new("Comando concluído")
-        notification.set_body(f"{name} terminou após {format_duration(duration)} — aba “{tab}”")
+        if status is None:
+            title, verb = "Comando concluído", "terminou"
+        elif status == 0:
+            title, verb = "✓ Comando concluído", "terminou com sucesso"
+        else:
+            title, verb = f"✗ Comando falhou (código {status})", "falhou"
+        shown = command if command and len(command) <= 60 else (command[:59] + "…" if command else name)
+        notification = Gio.Notification.new(title)
+        notification.set_body(f"{shown} {verb} após {format_duration(duration)} — aba “{tab}”")
         notification.set_icon(Gio.ThemedIcon.new(APP_NAME))
         notification.set_default_action_and_target("app.focus-pane", GLib.Variant.new_string(pane.pane_id))
         application = self.get_application()
@@ -2068,6 +2090,46 @@ class HackerTerminal(Gtk.ApplicationWindow):
         return True
 
     # ------------------------------------------------- saving and recording
+
+    def on_output_action(self, pane: TerminalPane, action: str) -> None:
+        if action == "save":
+            self.save_output_dialog(pane)
+        elif action == "record":
+            self.toggle_recording(pane)
+        elif action == "copy-last":
+            self.copy_last_output(pane)
+
+    def copy_last_output(self, pane: TerminalPane | None = None) -> None:
+        pane = pane or self.get_active_terminal()
+        if pane is None:
+            return
+        if not pane.integrated:
+            self.show_toast("Sem integração com o shell neste painel (zsh e bash com o shell padrão).")
+            return
+        copied = pane.copy_last_output()
+        if copied is None:
+            self.show_toast("Nenhum comando concluído ainda neste painel.")
+            return
+        mark, lines = copied
+        self.show_toast(f"Saída de “{mark.command[:40]}” copiada ({lines} linha{'s' if lines != 1 else ''})")
+
+    def jump_to_prompt(self, direction: int) -> None:
+        pane = self.get_active_terminal()
+        if pane is None:
+            return
+        if not pane.integrated:
+            self.show_toast("Sem integração com o shell neste painel (zsh e bash com o shell padrão).")
+        elif not pane.jump_to_prompt(direction):
+            self.show_toast("Não há prompt " + ("anterior." if direction < 0 else "seguinte."))
+
+    def on_shell_command_done(self, pane: TerminalPane, mark) -> None:
+        """Exact result reported by the shell hooks (replaces /proc polling)."""
+        if pane is self.get_active_terminal():
+            self.update_status()
+        if not self.preferences.notify_commands or mark.duration < self.preferences.notify_after:
+            return
+        self.on_command_finished(pane, mark.command.split()[0] if mark.command.split() else "comando",
+                                 mark.duration, mark.exit_status, mark.command)
 
     def output_file_chooser(self, title: str, action_label: str, pane: TerminalPane) -> Path | None:
         chooser = Gtk.FileChooserDialog(title=title, transient_for=self, action=Gtk.FileChooserAction.SAVE)
@@ -2429,6 +2491,9 @@ class HackerTerminal(Gtk.ApplicationWindow):
             ("Aba anterior", "Terminal", lambda: self.cycle_tab(-1)),
             ("Tela cheia", "Interface", self.toggle_fullscreen),
             ("Visualizar imagem ou planilha…", "Arquivo", self.choose_file_to_view),
+            ("Copiar saída do último comando", "Terminal", self.copy_last_output),
+            ("Ir ao prompt anterior", "Terminal", lambda: self.jump_to_prompt(-1)),
+            ("Ir ao próximo prompt", "Terminal", lambda: self.jump_to_prompt(1)),
             ("Salvar saída do terminal…", "Arquivo", self.save_output_dialog),
             ("Gravar saída do terminal (iniciar/parar)", "Arquivo", self.toggle_recording),
             ("Aumentar fonte", "Terminal", lambda: self.run_shortcut_action("zoom_in")),
@@ -2522,6 +2587,9 @@ class HackerTerminal(Gtk.ApplicationWindow):
         if terminal is not None:
             directory = terminal.current_working_directory()
             directory_text = shorten_home(directory)
+            last = next((mark for mark in reversed(terminal.prompts) if mark.finished), None)
+            if last is not None and last.exit_status not in (None, 0):
+                parts.append(f"✗ SAÍDA {last.exit_status}")
             context = detect_project_context(directory)
             if context.branch:
                 parts.append(f"GIT {context.branch}")

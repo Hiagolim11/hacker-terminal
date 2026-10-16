@@ -344,6 +344,18 @@ def main() -> int:
                     raise AssertionError("finished command did not mark the tab")
                 if not window.is_active() and (len(sent) != 1 or not sent[0][0].endswith(watched.pane_id)):
                     raise AssertionError("finished command did not send a notification")
+                from hackerterminal.terminal import PromptMark
+
+                failed = PromptMark(5, 2, 1, "make test", 2, 42.0, True)
+                sent.clear()
+                window.on_shell_command_done(watched, failed)
+                if not window.is_active() and not sent:
+                    raise AssertionError("shell-reported command did not notify")
+                fast = PromptMark(6, 2, 1, "ls", 0, 0.2, True)
+                count = len(sent)
+                window.on_shell_command_done(watched, fast)
+                if len(sent) != count:
+                    raise AssertionError("a quick command triggered a notification")
                 if not window.focus_pane(watched.pane_id) or window.get_active_terminal() is not watched:
                     raise AssertionError("notification action did not focus the pane")
                 window.on_pane_focus(watched)

@@ -8,8 +8,10 @@ export HACKER_TERMINAL_AUDIO_SINK=fakesink
 # Headless runners have no accessibility bus; its warning must not be fatal.
 export NO_AT_BRIDGE=1
 
-python3 -m compileall -q hacker_terminal.py hackerterminal tests/test_core.py tests/gui_smoke.py
+python3 -m compileall -q hacker_terminal.py hackerterminal tests/test_core.py tests/gui_smoke.py tests/shell_integration.py
 python3 -m py_compile bin/ht-open
+zsh -n hackerterminal/shell/zsh/.zshenv 2>/dev/null || ! command -v zsh >/dev/null
+bash -n hackerterminal/shell/bash/integration.bash
 test -x bin/ht-open
 bin/ht-open --help | grep -F "ht-open ARQUIVO" >/dev/null
 bash -n run.sh install.sh tests/smoke.sh packaging/build-deb.sh
@@ -38,8 +40,10 @@ fi
 
 if [[ -n "${DISPLAY:-}" ]] && command -v xdpyinfo >/dev/null && xdpyinfo >/dev/null 2>&1; then
   G_DEBUG=fatal-warnings python3 tests/gui_smoke.py
+  G_DEBUG=fatal-warnings python3 tests/shell_integration.py
 elif [[ "${HACKER_TERMINAL_GUI_TEST:-0}" == "1" ]] && command -v xvfb-run >/dev/null; then
   G_DEBUG=fatal-warnings xvfb-run -a python3 tests/gui_smoke.py
+  G_DEBUG=fatal-warnings xvfb-run -a python3 tests/shell_integration.py
 else
   ./run.sh --diagnose
   printf '%s\n' "SKIP: smoke gráfico (use HACKER_TERMINAL_GUI_TEST=1 com xvfb-run)" >&2
@@ -54,6 +58,8 @@ HOME="$test_home" XDG_DATA_HOME="$test_data" "$test_home/.local/bin/hacker-termi
   | grep -F '0.15.0' >/dev/null
 test -f "$test_data/hacker-terminal/hackerterminal/themes/matrix-green.ini"
 test -x "$test_home/.local/bin/ht-open"
+test -f "$test_data/hacker-terminal/hackerterminal/shell/zsh/.zshenv"
+test -f "$test_data/hacker-terminal/hackerterminal/shell/bash/integration.bash"
 "$test_home/.local/bin/ht-open" --help >/dev/null
 test -f "$test_data/applications/org.hackerterminal.HackerTerminal.desktop"
 test -f "$test_data/icons/hicolor/scalable/apps/hacker-terminal.svg"
@@ -67,6 +73,8 @@ if command -v dpkg-deb >/dev/null; then
   dpkg-deb --info "$artifact" >/dev/null
   dpkg-deb --contents "$artifact" | grep -F './usr/bin/hacker-terminal' >/dev/null
   dpkg-deb --contents "$artifact" | grep -F './usr/bin/ht-open -> ../lib/hacker-terminal/bin/ht-open' >/dev/null
+  dpkg-deb --contents "$artifact" | grep -F './usr/lib/hacker-terminal/hackerterminal/shell/zsh/.zshenv' >/dev/null
+  dpkg-deb --contents "$artifact" | grep -F './usr/lib/hacker-terminal/hackerterminal/shell/bash/integration.bash' >/dev/null
   dpkg-deb --contents "$artifact" \
     | grep -F './usr/lib/hacker-terminal/hackerterminal/themes/matrix-green.ini' >/dev/null
   dpkg-deb --extract "$artifact" "$test_dir/package-root"

@@ -80,6 +80,8 @@ class Preferences:
     confirm_paste: bool = True
     bell_notify: bool = True
     shell: str = ""
+    shell_integration: bool = True
+    command_marks: bool = True
     notify_commands: bool = True
     notify_after: int = 10
     key_switch: str = "brown"
@@ -154,6 +156,8 @@ class ConfigStore:
                 confirm_paste=self._boolean(section, "confirm_paste", True),
                 bell_notify=self._boolean(section, "bell_notify", True),
                 shell=section.get("shell", ""),
+                shell_integration=self._boolean(section, "shell_integration", True),
+                command_marks=self._boolean(section, "command_marks", True),
                 notify_commands=self._boolean(section, "notify_commands", True),
                 notify_after=self._integer(section, "notify_after", 10),
                 key_switch=section.get("key_switch", "brown"),
@@ -197,6 +201,8 @@ class ConfigStore:
             "confirm_paste": str(preferences.confirm_paste).lower(),
             "bell_notify": str(preferences.bell_notify).lower(),
             "shell": preferences.shell,
+            "shell_integration": str(preferences.shell_integration).lower(),
+            "command_marks": str(preferences.command_marks).lower(),
             "notify_commands": str(preferences.notify_commands).lower(),
             "notify_after": str(preferences.notify_after),
             "key_switch": preferences.key_switch,

@@ -18,6 +18,12 @@ except (ImportError, ValueError) as error:
     ) from error
 
 try:
+    gi.require_version("Atk", "1.0")
+    from gi.repository import Atk
+except (ImportError, ValueError):
+    Atk = None
+
+try:
     # Draw callbacks receive a cairo.Context; without python3-gi-cairo every
     # call raises TypeError, so the effects are disabled instead.
     gi.require_foreign("cairo")
@@ -31,4 +37,4 @@ try:
 except (ImportError, ValueError):
     Gst = None
 
-__all__ = ["HAS_CAIRO", "Gdk", "Gio", "GLib", "Gst", "Gtk", "Pango", "PangoCairo", "Vte"]
+__all__ = ["HAS_CAIRO", "Atk", "Gdk", "Gio", "GLib", "Gst", "Gtk", "Pango", "PangoCairo", "Vte"]

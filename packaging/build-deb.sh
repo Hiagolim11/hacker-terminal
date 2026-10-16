@@ -38,6 +38,10 @@ ln -s "../lib/$package/bin/ht-open" "$package_root/usr/bin/ht-open"
 for source in "$project_dir"/hackerterminal/*.py; do
   install -m 644 "$source" "$package_root/usr/lib/$package/hackerterminal/$(basename "$source")"
 done
+install -D -m 644 "$project_dir/hackerterminal/shell/zsh/.zshenv" \
+  "$package_root/usr/lib/$package/hackerterminal/shell/zsh/.zshenv"
+install -D -m 644 "$project_dir/hackerterminal/shell/bash/integration.bash" \
+  "$package_root/usr/lib/$package/hackerterminal/shell/bash/integration.bash"
 for source in "$project_dir"/hackerterminal/themes/*.ini; do
   install -m 644 "$source" "$package_root/usr/lib/$package/hackerterminal/themes/$(basename "$source")"
 done

@@ -9,6 +9,7 @@ import shlex
 import shutil
 import uuid
 from pathlib import Path
+from dataclasses import dataclass
 from typing import Callable
 from urllib.parse import unquote, urlparse
 
@@ -19,7 +20,7 @@ from .constants import DEFAULT_FONT_SIZE
 from .effects import EffectsLayer
 from .keysound import KeySoundEngine
 from .fonts import FontChoice, choose_font
-from .runtime import Gdk, Gio, GLib, Gtk, Pango, Vte
+from .runtime import Atk, Gdk, Gio, GLib, Gtk, Pango, Vte
 from .themes import Theme
 
 LOGGER = logging.getLogger(__name__)
@@ -45,6 +46,76 @@ FILE_PATTERN = (
     + r")(?![\w/])"
 )
 TOOLS_DIRECTORY = Path(__file__).resolve().parent.parent / "bin"
+SHELL_DIRECTORY = Path(__file__).resolve().parent / "shell"
+MARK_PROPERTY = "vte.ext.hackerterminal.mark"
+if MARK_PROPERTY not in Vte.get_termprops():
+    # Custom termprops must exist before terminals are created; shell hooks
+    # set it with OSC 666 once per prompt.
+    Vte.install_termprop(MARK_PROPERTY, Vte.PropertyType.STRING, Vte.PropertyFlags.NONE)
+
+
+@dataclass
+class PromptMark:
+    """A prompt seen in the terminal and, once known, its command's result."""
+
+    row: int            # last row of the prompt (where the command is typed)
+    column: int         # cursor column after the prompt
+    prompt_lines: int
+    command: str = ""
+    exit_status: int | None = None
+    duration: float = 0.0
+    finished: bool = False
+
+    @property
+    def first_row(self) -> int:
+        return self.row - self.prompt_lines + 1
+
+
+def parse_mark(value: str) -> tuple[int, int | None, float, int, str] | None:
+    """Decode ``1|seq|status|duration_ms|prompt_lines|command`` from the hooks.
+
+    OSC 666 treats ";" as a separator between properties, so fields use "|"
+    and the command is percent-encoded by the hooks.
+    """
+    parts = value.split("|", 5)
+    if len(parts) != 6 or parts[0] != "1":
+        return None
+    try:
+        sequence = int(parts[1])
+        status = int(parts[2]) if parts[2] else None
+        duration = int(parts[3] or 0) / 1000
+        lines = max(1, min(10, int(parts[4] or 1)))
+    except ValueError:
+        return None
+    return sequence, status, duration, lines, unquote(parts[5])
+
+
+def command_extra_rows(mark: PromptMark, columns: int) -> int:
+    """Rows a typed command adds below the prompt line (wrapping and newlines)."""
+    lines = mark.command.split("\n")
+    extra = max(0, mark.column + len(lines[0]) - 1) // columns
+    for line in lines[1:]:
+        extra += 1 + max(0, len(line) - 1) // columns
+    return extra
+
+
+def integration_launch(argv: list[str], custom_shell: str) -> tuple[list[str], dict[str, str]]:
+    """Adapt the shell command line to load the integration hooks."""
+    if os.environ.get("HACKER_TERMINAL_SHELL_INTEGRATION", "1").strip().lower() in ("0", "false", "no", "off"):
+        return argv, {}
+    name = Path(argv[0]).name
+    plain = len(argv) == 1 or argv[1:] == ["-l"]
+    if not plain:
+        return argv, {}  # the user's own arguments win
+    if name == "zsh" and (SHELL_DIRECTORY / "zsh" / ".zshenv").is_file():
+        env = {"ZDOTDIR": str(SHELL_DIRECTORY / "zsh"), "HACKER_TERMINAL_SHELL_INTEGRATION": "zsh"}
+        if os.environ.get("ZDOTDIR"):
+            env["HACKER_TERMINAL_ZDOTDIR"] = os.environ["ZDOTDIR"]
+        return argv, env
+    if name == "bash" and (SHELL_DIRECTORY / "bash" / "integration.bash").is_file():
+        script = str(SHELL_DIRECTORY / "bash" / "integration.bash")
+        return [argv[0], "--init-file", script, "-i"], {"HACKER_TERMINAL_SHELL_INTEGRATION": "bash"}
+    return argv, {}
 
 
 def resolve_viewable(text: str, directory: Path) -> Path | None:
@@ -367,6 +438,10 @@ class TerminalPane(Gtk.Box):
         self.title = ""
         self.bell_pending = False
         self.recorder: OutputRecorder | None = None
+        self.prompts: list[PromptMark] = []
+        self.last_mark_sequence = -1
+        self.on_command_done: Callable[["TerminalPane", PromptMark], None] | None = None
+        self.gutter_handler = 0
         self.command_started: float | None = None
         self.command_name: str | None = None
         self.zoom_scroll = 0.0
@@ -399,6 +474,7 @@ class TerminalPane(Gtk.Box):
         self.terminal.connect("child-exited", self.on_child_exited)
         self.terminal.connect("selection-changed", self.on_selection_changed)
         self.terminal.connect("bell", self.on_bell)
+        self.terminal.connect("termprop-changed", self.on_termprop_changed)
         self.terminal.connect("notify::window-title", self.on_window_title_changed)
         try:
             link_regex = Vte.Regex.new_for_match(URL_PATTERN, -1, PCRE2_MULTILINE)
@@ -453,6 +529,10 @@ class TerminalPane(Gtk.Box):
         self.terminal.set_color_highlight(rgba(theme.selection_background))
         self.terminal.set_color_highlight_foreground(rgba(theme.selection_foreground))
         self.theme_colors = (theme.terminal_background, theme.terminal_foreground)
+        self.mark_colors = (
+            tuple(int(theme.accent[index:index + 2], 16) / 255 for index in (1, 3, 5)),
+            tuple(int(theme.danger[index:index + 2], 16) / 255 for index in (1, 3, 5)),
+        )
         self.terminal.set_colors(
             rgba(theme.terminal_foreground),
             rgba(theme.terminal_background, preferences.opacity / 100),
@@ -482,6 +562,12 @@ class TerminalPane(Gtk.Box):
         child_env.update({"TERM": "xterm-256color", "COLORTERM": "truecolor", "HACKER_TERMINAL": "1"})
         child_env.update(self.extra_env)
         child_env[PANE_ENV] = self.pane_id
+        child_env.pop("HACKER_TERMINAL_ZDOTDIR", None)
+        if not self.config.command and self.config.preferences.shell_integration:
+            argv, integration_env = integration_launch(argv, self.config.preferences.shell)
+            child_env.update(integration_env)
+        else:
+            child_env["HACKER_TERMINAL_SHELL_INTEGRATION"] = "0"
         if (TOOLS_DIRECTORY / "ht-open").is_file():
             # Appended, so a user's own command with the same name still wins.
             child_env["PATH"] = os.pathsep.join(filter(None, [child_env.get("PATH", ""), str(TOOLS_DIRECTORY)]))
@@ -595,6 +681,153 @@ class TerminalPane(Gtk.Box):
     def current_working_directory(self) -> Path:
         current = path_from_file_uri(self.terminal.get_current_directory_uri())
         return current or self.config.working_directory
+
+    # ---------------------------------------------------- shell integration
+
+    @property
+    def integrated(self) -> bool:
+        return bool(self.prompts)
+
+    def first_buffer_row(self) -> int:
+        """Absolute row shown at scroll position 0 (older rows were dropped)."""
+        cursor_row = self.terminal.get_cursor_position()[1]
+        height = max(1, self.terminal.get_char_height())
+        rows = round(self.terminal.get_vadjustment().get_upper() / height)
+        return max(0, cursor_row - rows + 1)
+
+    def on_termprop_changed(self, terminal, name: str) -> None:
+        if name != MARK_PROPERTY:
+            return
+        value, _length = terminal.get_termprop_string(name)
+        parsed = parse_mark(value or "")
+        if parsed is None:
+            return
+        sequence, status, duration, lines, command = parsed
+        if sequence == self.last_mark_sequence:
+            return
+        self.last_mark_sequence = sequence
+        column, row = terminal.get_cursor_position()
+        # A `clear` that wipes the scrollback renumbers rows; drop stale marks.
+        first = self.first_buffer_row()
+        self.prompts = [mark for mark in self.prompts if first <= mark.row < row]
+        if self.prompts and command:
+            previous = self.prompts[-1]
+            previous.command, previous.exit_status, previous.duration = command, status, duration
+            previous.finished = True
+            if self.on_command_done is not None:
+                self.on_command_done(self, previous)
+        self.prompts.append(PromptMark(row, column, lines))
+        del self.prompts[:-500]  # plenty for jumping, bounded memory
+        self.ensure_gutter()
+        terminal.queue_draw()
+
+    def output_rows(self, index: int) -> tuple[int, int] | None:
+        """Rows printed by the command typed at prompt ``index``."""
+        if not 0 <= index < len(self.prompts) - 1:
+            return None
+        mark, following = self.prompts[index], self.prompts[index + 1]
+        start = mark.row + 1 + command_extra_rows(mark, max(1, self.terminal.get_column_count()))
+        end = following.first_row - 1
+        return (start, end) if end >= start else None
+
+    def last_output(self) -> tuple[PromptMark, str] | None:
+        for index in range(len(self.prompts) - 2, -1, -1):
+            mark = self.prompts[index]
+            if not mark.finished:
+                continue
+            rows = self.output_rows(index)
+            if rows is None:
+                return mark, ""
+            result = self.terminal.get_text_range_format(
+                Vte.Format.TEXT, rows[0], 0, rows[1], self.terminal.get_column_count()
+            )
+            text = (result[0] if isinstance(result, tuple) else result) or ""
+            return mark, text.rstrip("\n")
+        return None
+
+    def copy_last_output(self) -> tuple[PromptMark, int] | None:
+        found = self.last_output()
+        if found is None:
+            return None
+        mark, text = found
+        Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(text, -1)
+        return mark, (text.count("\n") + 1 if text else 0)
+
+    def top_visible_row(self) -> float:
+        """Absolute row shown at the top of the view.
+
+        VTE exposes no screen offset, and after a `clear` the screen no
+        longer ends at the cursor; the accessible caret's pixel position
+        tells where the cursor row is drawn, which pins the mapping.
+        """
+        adjustment = self.terminal.get_vadjustment()
+        column, row = self.terminal.get_cursor_position()
+        key = (adjustment.get_value(), adjustment.get_upper(), row, column, self.terminal.get_allocated_height())
+        if key == getattr(self, "_top_cache", (None, None))[0]:
+            return self._top_cache[1]
+        height = max(1, self.terminal.get_char_height())
+        top = None
+        accessible = self.terminal.get_accessible() if Atk is not None else None
+        if isinstance(accessible, Atk.Text) and self.terminal.get_toplevel() is not None:
+            offset = accessible.get_caret_offset()
+            origin = self.terminal.translate_coordinates(self.terminal.get_toplevel(), 0, 0)
+            if offset >= 0 and origin is not None:
+                _x, y, _width, _height = accessible.get_character_extents(offset, Atk.CoordType.WINDOW)
+                padding = self.terminal.get_style_context().get_padding(Gtk.StateFlags.NORMAL).top
+                if y > -10_000:  # extents are -1 when unavailable
+                    top = row - round((y - origin[1] - padding) / height)
+        if top is None:
+            top = self.first_buffer_row() + adjustment.get_value() / height
+        self._top_cache = (key, top)
+        return top
+
+    def jump_to_prompt(self, direction: int) -> bool:
+        """Scroll so the previous/next prompt is at the top; True if moved."""
+        if not self.prompts:
+            return False
+        top = self.top_visible_row()
+        rows = [mark.first_row for mark in self.prompts]
+        if direction < 0:
+            candidates = [row for row in rows if row < top - 0.5]
+            target = candidates[-1] if candidates else None
+        else:
+            candidates = [row for row in rows if row > top + 0.5]
+            target = candidates[0] if candidates else None
+        if target is None:
+            return False
+        adjustment = self.terminal.get_vadjustment()
+        height = self.terminal.get_char_height()
+        # Relative move from the current view: no need to know where the
+        # buffer starts (it shifts after `clear` or a scrollback overflow).
+        value = adjustment.get_value() + (target - top) * height
+        adjustment.set_value(max(adjustment.get_lower(), min(value, adjustment.get_upper() - adjustment.get_page_size())))
+        return True
+
+    def ensure_gutter(self) -> None:
+        if not self.gutter_handler:
+            self.gutter_handler = self.terminal.connect_after("draw", self.draw_gutter)
+
+    def draw_gutter(self, widget, context) -> bool:
+        """A thin bar beside each finished command: accent if OK, red if it failed."""
+        if not self.prompts or not self.config.preferences.command_marks:
+            return False
+        height = widget.get_char_height()
+        top = self.top_visible_row()
+        visible_rows = widget.get_allocated_height() / max(1, height) + 1
+        padding = widget.get_style_context().get_padding(Gtk.StateFlags.NORMAL)
+        accent, danger = getattr(self, "mark_colors", ((0.4, 0.8, 0.6), (0.9, 0.3, 0.3)))
+        for mark in self.prompts:
+            if not mark.finished or mark.exit_status is None:
+                continue
+            offset = mark.first_row - top
+            if offset < -mark.prompt_lines or offset > visible_rows:
+                continue
+            color = accent if mark.exit_status == 0 else danger
+            context.set_source_rgba(*color, 0.55 if mark.exit_status == 0 else 0.9)
+            y = padding.top + offset * height
+            context.rectangle(0, y, max(2, padding.left - 1) if padding.left > 3 else 2, height * mark.prompt_lines)
+            context.fill()
+        return False
 
     # ------------------------------------------------- saving and recording
 
@@ -735,6 +968,8 @@ class TerminalPane(Gtk.Box):
             ("Pesquisar", lambda *_: self.show_search()),
             ("Limpar", lambda *_: self.run_command("clear")),
         ]
+        if self.integrated:
+            actions.append(("Copiar saída do último comando", lambda *_: self.on_output_action(self, "copy-last")))
         if self.on_output_action is not None:
             actions.append(("Salvar saída…", lambda *_: self.on_output_action(self, "save")))
             recording = "Parar gravação" if self.recorder is not None else "Gravar saída…"
