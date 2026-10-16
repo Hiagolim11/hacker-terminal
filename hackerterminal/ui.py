@@ -33,7 +33,7 @@ from .keysound import (
 from .profiles import Profile, ProfileError, ProfileManager, profile_from_preferences, slugify
 from .project import detect_project_context
 from .runtime import Gdk, Gio, GLib, Gtk, Pango
-from .session import SessionState, SessionStore, SessionTab
+from .session import MAX_PANES_PER_TAB, SessionState, SessionStore, SessionTab
 from .shortcuts import MODIFIER_MASK, SHORTCUT_ACTIONS, ShortcutMap, accelerator_label, accelerator_name
 from .terminal import TerminalPane, format_duration, shell_argv
 from .themes import THEME_COLOR_FIELDS, Theme, ThemeManager, ThemeError
@@ -1660,7 +1660,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
 
     def focus_other_pane(self) -> None:
         frame = self.active_frame()
-        panes = self.page_panes.get(frame, []) if frame is not None else []
+        panes = self.leaves(frame.get_child()) if frame is not None else []
         active = self.get_active_terminal()
         if len(panes) > 1 and active in panes:
             target = panes[(panes.index(active) + 1) % len(panes)]
@@ -1823,17 +1823,30 @@ class HackerTerminal(Gtk.ApplicationWindow):
             return False
         for tab in state.tabs:
             self.new_tab(working_directory=tab.directories[0])
-            if len(tab.directories) > 1 and tab.orientation:
-                orientation = (
-                    Gtk.Orientation.HORIZONTAL
-                    if tab.orientation == "horizontal"
-                    else Gtk.Orientation.VERTICAL
-                )
-                self.split_active(orientation, tab.directories[1])
+            frame = self.active_frame()
+            pane = self.get_active_terminal()
+            if frame is not None and pane is not None:
+                self.rebuild_layout(frame, pane, tab.tree(), tab.directories)
         if self.notebook.get_n_pages():
             self.notebook.set_current_page(state.active_tab)
             return True
         return False
+
+    def rebuild_layout(self, frame: Gtk.Frame, pane: TerminalPane, node, directories) -> None:
+        """Replay a saved split tree; ``pane`` already shows its first leaf."""
+        if not isinstance(node, list):
+            return
+        kind, first, second = node
+        orientation = Gtk.Orientation.HORIZONTAL if kind == "horizontal" else Gtk.Orientation.VERTICAL
+        second_pane = self.split_pane(frame, pane, orientation, directories[self.first_leaf(second)])
+        self.rebuild_layout(frame, pane, first, directories)
+        self.rebuild_layout(frame, second_pane, second, directories)
+
+    @staticmethod
+    def first_leaf(node) -> int:
+        while isinstance(node, list):
+            node = node[1]
+        return node
 
     def new_tab(self, initial: bool = False, working_directory: Path | None = None) -> None:
         if self.config.command and self.notebook.get_n_pages() > 0:
@@ -2174,34 +2187,77 @@ class HackerTerminal(Gtk.ApplicationWindow):
         self,
         orientation: Gtk.Orientation,
         working_directory: Path | None = None,
-    ) -> None:
+    ) -> TerminalPane | None:
         frame = self.active_frame()
         pane = self.get_active_terminal()
         if frame is None or pane is None or self.config.command:
-            return
-        panes = self.page_panes.get(frame, [])
-        if len(panes) >= 2:
-            self.show_info("Esta versão permite até dois painéis por aba.")
-            return
-        directory = working_directory or pane.current_working_directory()
+            return None
+        if len(self.page_panes.get(frame, [])) >= MAX_PANES_PER_TAB:
+            self.show_info(f"Cada aba comporta até {MAX_PANES_PER_TAB} painéis. Abra uma nova aba com Ctrl+Shift+T.")
+            return None
+        return self.split_pane(frame, pane, orientation, working_directory or pane.current_working_directory())
+
+    def split_pane(
+        self, frame: Gtk.Frame, pane: TerminalPane, orientation: Gtk.Orientation, directory: Path
+    ) -> TerminalPane:
+        """Replace ``pane`` by a split holding it and a new pane."""
+        allocation = pane.get_allocation()
+        parent = pane.get_parent()
         new_pane = self.create_terminal((), directory)
-        frame.remove(pane)
         split = Gtk.Paned(orientation=orientation)
+        if isinstance(parent, Gtk.Paned):
+            first_slot = parent.get_child1() is pane
+            parent.remove(pane)
+            if first_slot:
+                parent.pack1(split, resize=True, shrink=True)
+            else:
+                parent.pack2(split, resize=True, shrink=True)
+        else:
+            frame.remove(pane)
+            frame.add(split)
         split.pack1(pane, resize=True, shrink=True)
         split.pack2(new_pane, resize=True, shrink=True)
-        frame.add(split)
-        self.page_panes[frame] = [pane, new_pane]
+        self.page_panes[frame].append(new_pane)
         self.active_panes[frame] = new_pane
-        label = self.tab_labels[pane]
-        self.tab_labels[new_pane] = label
+        self.tab_labels[new_pane] = self.tab_labels[pane]
         frame.show_all()
-        allocation = frame.get_allocation()
-        split.set_position(
-            allocation.width // 2 if orientation == Gtk.Orientation.HORIZONTAL else allocation.height // 2
-        )
+        size = allocation.width if orientation == Gtk.Orientation.HORIZONTAL else allocation.height
+        if size > 1:
+            split.set_position(size // 2)
+        else:
+            self.center_when_allocated(split)
         self.update_pane_highlight(frame)
         new_pane.spawn()
         self.update_status()
+        return new_pane
+
+    @staticmethod
+    def center_when_allocated(split: Gtk.Paned) -> None:
+        """Split evenly once the paned has a real size (restored layouts)."""
+        def on_allocate(widget, allocation) -> None:
+            widget.disconnect(handler[0])
+            size = allocation.width if widget.get_orientation() == Gtk.Orientation.HORIZONTAL else allocation.height
+            # Changing the position inside size-allocate would re-queue a resize.
+            GLib.idle_add(lambda: widget.set_position(size // 2) or False)
+
+        handler = [split.connect("size-allocate", on_allocate)]
+
+    @staticmethod
+    def leaves(widget: Gtk.Widget) -> list[TerminalPane]:
+        """Panes of a split tree, left-to-right / top-to-bottom."""
+        if isinstance(widget, TerminalPane):
+            return [widget]
+        if isinstance(widget, Gtk.Paned):
+            return [*HackerTerminal.leaves(widget.get_child1()), *HackerTerminal.leaves(widget.get_child2())]
+        return []
+
+    @staticmethod
+    def layout_of(widget: Gtk.Widget, order: list[TerminalPane]):
+        if isinstance(widget, Gtk.Paned):
+            kind = "horizontal" if widget.get_orientation() == Gtk.Orientation.HORIZONTAL else "vertical"
+            return [kind, HackerTerminal.layout_of(widget.get_child1(), order),
+                    HackerTerminal.layout_of(widget.get_child2(), order)]
+        return order.index(widget)
 
     def close_active_pane(self, force: bool = False) -> bool:
         viewer = self.active_viewer()
@@ -2218,17 +2274,26 @@ class HackerTerminal(Gtk.ApplicationWindow):
         if len(panes) == 1:
             return self.close_page(frame, force=force)
         pane.prepare_close()
-        survivor = next(item for item in panes if item is not pane)
-        split = frame.get_child()
-        if isinstance(split, Gtk.Paned):
-            split.remove(pane)
-            split.remove(survivor)
+        split = pane.get_parent()
+        sibling = split.get_child2() if split.get_child1() is pane else split.get_child1()
+        holder = split.get_parent()
+        first_slot = isinstance(holder, Gtk.Paned) and holder.get_child1() is split
+        split.remove(pane)
+        split.remove(sibling)
+        if isinstance(holder, Gtk.Paned):
+            holder.remove(split)
+            if first_slot:
+                holder.pack1(sibling, resize=True, shrink=True)
+            else:
+                holder.pack2(sibling, resize=True, shrink=True)
+        else:
             frame.remove(split)
-            frame.add(survivor)
-            split.destroy()
+            frame.add(sibling)
+        split.destroy()
         self.tab_labels.pop(pane, None)
         pane.destroy()
-        self.page_panes[frame] = [survivor]
+        panes.remove(pane)
+        survivor = self.leaves(sibling)[0]
         self.active_panes[frame] = survivor
         frame.show_all()
         self.update_pane_highlight(frame)
@@ -2534,17 +2599,11 @@ class HackerTerminal(Gtk.ApplicationWindow):
             frame = self.notebook.get_nth_page(page)
             if not isinstance(frame, Gtk.Frame):
                 continue
-            panes = self.page_panes.get(frame, [])
-            directories = tuple(pane.current_working_directory() for pane in panes)
-            child = frame.get_child()
-            orientation = None
-            if len(panes) > 1 and isinstance(child, Gtk.Paned):
-                orientation = (
-                    "horizontal"
-                    if child.get_orientation() == Gtk.Orientation.HORIZONTAL
-                    else "vertical"
-                )
-            tabs.append(SessionTab(directories, orientation))
+            order = self.leaves(frame.get_child())
+            if not order:
+                continue
+            directories = tuple(pane.current_working_directory() for pane in order)
+            tabs.append(SessionTab(directories, None, self.layout_of(frame.get_child(), order)))
         if not tabs:
             self.session_store.clear()
             return

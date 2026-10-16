@@ -1113,3 +1113,53 @@ class LongCommandTests(unittest.TestCase):
             store.save(Preferences(notify_commands=False, notify_after=1))
             loaded = store.load()
             self.assertEqual((loaded.notify_commands, loaded.notify_after), (False, 3))  # clamped
+
+
+class SplitLayoutSessionTests(unittest.TestCase):
+    def test_layout_validation(self) -> None:
+        from hackerterminal.session import valid_layout
+
+        self.assertTrue(valid_layout(0, 1))
+        self.assertTrue(valid_layout(["horizontal", ["vertical", 0, 1], ["vertical", 2, 3]], 4))
+        for broken in (["diagonal", 0, 1], ["horizontal", 0, 0], ["horizontal", 0], ["vertical", 0, True], "0"):
+            self.assertFalse(valid_layout(broken, 2), broken)
+        self.assertFalse(valid_layout(["horizontal", 0, 1], 3))  # a leaf is missing
+
+    def test_grid_round_trip_and_hostile_files(self) -> None:
+        import json
+
+        with tempfile.TemporaryDirectory() as directory:
+            folders = [Path(directory) / name for name in "abcd"]
+            for folder in folders:
+                folder.mkdir()
+            store = SessionStore(Path(directory) / "session.json")
+            grid = ["horizontal", ["vertical", 0, 1], ["vertical", 2, 3]]
+            store.save(SessionState(900, 600, 0, (SessionTab(tuple(folders), None, grid),)))
+            loaded = store.load()
+            self.assertEqual((loaded.tabs[0].directories, loaded.tabs[0].tree()), (tuple(folders), grid))
+            self.assertEqual(json.loads(store.path.read_text())["version"], 3)
+
+            def load_with(tab: dict):
+                store.path.write_text(json.dumps({"version": 3, "tabs": [tab]}), encoding="utf-8")
+                return store.load().tabs[0]
+
+            tampered = load_with({"directories": [str(f) for f in folders], "layout": ["horizontal", 0, 0]})
+            self.assertEqual((len(tampered.directories), tampered.tree()), (1, 0))
+            folders[2].rmdir()
+            missing = load_with({"directories": [str(f) for f in folders], "layout": grid})
+            self.assertEqual((missing.directories, missing.tree()), ((folders[0],), 0))
+            too_many = load_with({"directories": [str(folders[0])] * 9, "layout": 0})
+            self.assertLessEqual(len(too_many.directories), 4)
+
+    def test_version_two_files_still_load(self) -> None:
+        import json
+
+        with tempfile.TemporaryDirectory() as directory:
+            left, right = Path(directory) / "l", Path(directory) / "r"
+            left.mkdir()
+            right.mkdir()
+            store = SessionStore(Path(directory) / "session.json")
+            store.path.write_text(json.dumps({
+                "version": 2, "tabs": [{"directories": [str(left), str(right)], "orientation": "vertical"}],
+            }), encoding="utf-8")
+            self.assertEqual(store.load().tabs[0].tree(), ["vertical", 0, 1])

@@ -244,6 +244,56 @@ def main() -> int:
             if not window.open_socket or origin.extra_env.get("HACKER_TERMINAL_SOCKET") != str(window.open_socket):
                 raise AssertionError("terminal panes do not receive the ht-open socket")
 
+            # Nested splits: a 2x2 grid, collapse, limit and session round trip.
+            window.new_tab()
+            grid_frame = window.active_frame()
+            top_left = window.get_active_terminal()
+            top_right = window.split_active(Gtk.Orientation.HORIZONTAL)
+            window.on_pane_focus(top_left)
+            bottom_left = window.split_active(Gtk.Orientation.VERTICAL)
+            window.on_pane_focus(top_right)
+            bottom_right = window.split_active(Gtk.Orientation.VERTICAL)
+            wait_for(lambda: False, 0.3)
+            order = window.leaves(grid_frame.get_child())
+            if order != [top_left, bottom_left, top_right, bottom_right]:
+                raise AssertionError("2x2 grid panes are not in visual order")
+            if window.layout_of(grid_frame.get_child(), order) != ["horizontal", ["vertical", 0, 1], ["vertical", 2, 3]]:
+                raise AssertionError("2x2 grid layout is wrong")
+            if any(pane.get_allocated_width() < 100 or pane.get_allocated_height() < 60 for pane in order):
+                raise AssertionError("grid panes were not given usable space")
+            infos = []
+            original_info = window.show_info
+            window.show_info = infos.append
+            if window.split_active(Gtk.Orientation.HORIZONTAL) is not None or not infos:
+                raise AssertionError("a fifth pane was allowed in one tab")
+            window.show_info = original_info
+            session_store.clear()
+            preferences.restore_session = True
+            window.save_session()
+            saved_grid = session_store.load()
+            if saved_grid is None or not any(tab.tree() == ["horizontal", ["vertical", 0, 1], ["vertical", 2, 3]] for tab in saved_grid.tabs):
+                raise AssertionError("the grid layout was not saved")
+            window.on_pane_focus(bottom_left)
+            window.close_active_pane(force=True)
+            if window.layout_of(grid_frame.get_child(), window.leaves(grid_frame.get_child())) != ["horizontal", 0, ["vertical", 1, 2]]:
+                raise AssertionError("closing a grid pane did not collapse its split")
+            if window.get_active_terminal() is not top_left:
+                raise AssertionError("focus did not move to the collapsed neighbour")
+            replay_frame_count = window.notebook.get_n_pages()
+            window.saved_session = saved_grid
+            window.restore_session()
+            restored_frames = [window.notebook.get_nth_page(index) for index in range(replay_frame_count, window.notebook.get_n_pages())]
+            if not any(
+                isinstance(frame, Gtk.Frame)
+                and window.layout_of(frame.get_child(), window.leaves(frame.get_child())) == ["horizontal", ["vertical", 0, 1], ["vertical", 2, 3]]
+                for frame in restored_frames
+            ):
+                raise AssertionError("restoring the session did not rebuild the grid")
+            for frame in restored_frames + [grid_frame]:
+                if isinstance(frame, Gtk.Frame):
+                    window.close_page(frame, force=True)
+            window.notebook.set_current_page(window.notebook.page_num(window.frame_for_pane(terminal)))
+
             # Saving and recording the output (fed directly, no shell needed).
             recorded = window.get_active_terminal()
             recorded.terminal.feed(b"antes da gravacao\r\n")

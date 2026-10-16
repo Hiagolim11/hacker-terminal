@@ -11,10 +11,49 @@ from pathlib import Path
 from .config import clamp, default_config_path
 
 
+MAX_PANES_PER_TAB = 4
+MAX_PANES = 20
+
+# A layout is a leaf index or ["horizontal"|"vertical", first, second].
+Layout = int | list
+
+
 @dataclass(frozen=True)
 class SessionTab:
     directories: tuple[Path, ...]
     orientation: str | None = None
+    layout: Layout | None = None
+
+    def tree(self) -> Layout:
+        """The split tree, deriving it from the v2 fields when needed."""
+        if self.layout is not None:
+            return self.layout
+        if len(self.directories) == 2 and self.orientation:
+            return [self.orientation, 0, 1]
+        return 0
+
+
+def valid_layout(layout, count: int) -> bool:
+    """True when the tree uses each of the ``count`` leaves exactly once."""
+    seen: list[int] = []
+
+    def walk(node, depth: int) -> bool:
+        if depth > MAX_PANES_PER_TAB:
+            return False
+        if isinstance(node, bool):
+            return False
+        if isinstance(node, int):
+            seen.append(node)
+            return True
+        return (
+            isinstance(node, list)
+            and len(node) == 3
+            and node[0] in ("horizontal", "vertical")
+            and walk(node[1], depth + 1)
+            and walk(node[2], depth + 1)
+        )
+
+    return walk(layout, 0) and sorted(seen) == list(range(count))
 
 
 @dataclass(frozen=True)
@@ -37,7 +76,7 @@ class SessionStore:
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
             version = payload.get("version")
-            if version not in (1, 2):
+            if version not in (1, 2, 3):
                 return None
             if version == 1:
                 tabs = tuple(
@@ -49,20 +88,28 @@ class SessionStore:
                 tabs_list: list[SessionTab] = []
                 total = 0
                 for item in payload.get("tabs", []):
-                    if not isinstance(item, dict) or total >= 20:
+                    if not isinstance(item, dict) or total >= MAX_PANES:
                         continue
-                    remaining = 20 - total
-                    directories = tuple(
-                        path
-                        for value in item.get("directories", [])[: min(2, remaining)]
-                        if isinstance(value, str) and (path := Path(value).expanduser()).is_dir()
-                    )
-                    if not directories:
+                    raw = [value for value in item.get("directories", []) if isinstance(value, str)]
+                    raw = raw[: min(MAX_PANES_PER_TAB, MAX_PANES - total)]
+                    directories = tuple(Path(value).expanduser() for value in raw)
+                    if not directories or not all(path.is_dir() for path in directories):
+                        # A missing folder breaks the layout: keep what still exists, unsplit.
+                        directories = tuple(path for path in directories if path.is_dir())[:1]
+                        if not directories:
+                            continue
+                        tabs_list.append(SessionTab(directories))
+                        total += 1
                         continue
+                    layout = item.get("layout")
                     orientation = item.get("orientation")
-                    if orientation not in ("horizontal", "vertical") or len(directories) < 2:
+                    if layout is not None and not valid_layout(layout, len(directories)):
+                        layout = None
+                    if orientation not in ("horizontal", "vertical") or len(directories) != 2:
                         orientation = None
-                    tabs_list.append(SessionTab(directories, orientation))
+                    if layout is None and orientation is None:
+                        directories = directories[:1]
+                    tabs_list.append(SessionTab(directories, orientation, layout))
                     total += len(directories)
                 tabs = tuple(tabs_list)
             if not tabs:
@@ -76,22 +123,28 @@ class SessionStore:
 
     def save(self, state: SessionState) -> bool:
         tabs: list[dict[str, object]] = []
-        remaining = 20
+        remaining = MAX_PANES
         for tab in state.tabs:
             if remaining <= 0:
                 break
-            directories = [str(path) for path in tab.directories[: min(2, remaining)] if path.is_dir()]
+            if len(tab.directories) > min(MAX_PANES_PER_TAB, remaining) or not all(
+                path.is_dir() for path in tab.directories
+            ):
+                # Too many panes or a vanished folder: keep the first one only.
+                directories = [str(path) for path in tab.directories[:1] if path.is_dir()]
+                layout = 0
+            else:
+                directories = [str(path) for path in tab.directories]
+                layout = tab.tree()
             if not directories:
                 continue
-            orientation = (
-                tab.orientation
-                if tab.orientation in ("horizontal", "vertical") and len(directories) == 2
-                else None
-            )
-            tabs.append({"directories": directories, "orientation": orientation})
+            if not valid_layout(layout, len(directories)):
+                directories, layout = directories[:1], 0
+            orientation = layout[0] if isinstance(layout, list) and len(directories) == 2 else None
+            tabs.append({"directories": directories, "orientation": orientation, "layout": layout})
             remaining -= len(directories)
         payload = {
-            "version": 2,
+            "version": 3,
             "width": clamp(state.width, 720, 4000),
             "height": clamp(state.height, 440, 2160),
             "active_tab": max(0, state.active_tab),
