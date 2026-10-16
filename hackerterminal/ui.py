@@ -1970,6 +1970,9 @@ class HackerTerminal(Gtk.ApplicationWindow):
         )
         if self.open_socket is not None:
             pane.extra_env[SOCKET_ENV] = str(self.open_socket)
+        pane.on_output_action = lambda source, action: (
+            self.save_output_dialog(source) if action == "save" else self.toggle_recording(source)
+        )
         return pane
 
     def active_frame(self) -> Gtk.Frame | None:
@@ -2050,6 +2053,86 @@ class HackerTerminal(Gtk.ApplicationWindow):
         self.present()
         pane.terminal.grab_focus()
         return True
+
+    # ------------------------------------------------- saving and recording
+
+    def output_file_chooser(self, title: str, action_label: str, pane: TerminalPane) -> Path | None:
+        chooser = Gtk.FileChooserDialog(title=title, transient_for=self, action=Gtk.FileChooserAction.SAVE)
+        chooser.add_buttons("Cancelar", Gtk.ResponseType.CANCEL, action_label, Gtk.ResponseType.OK)
+        chooser.set_do_overwrite_confirmation(True)
+        chooser.set_current_folder(str(pane.current_working_directory()))
+        chooser.set_current_name(time.strftime("terminal-%Y%m%d-%H%M%S.txt"))
+        for name, pattern in (("Texto (*.txt)", "*.txt"), ("HTML com cores (*.html)", "*.html")):
+            file_filter = Gtk.FileFilter()
+            file_filter.set_name(name)
+            file_filter.add_pattern(pattern)
+            chooser.add_filter(file_filter)
+        hint = Gtk.Label(label="Use a extensão .html para manter as cores.", xalign=0)
+        hint.get_style_context().add_class("panel-hint")
+        chooser.set_extra_widget(hint)
+        response = chooser.run()
+        filename = chooser.get_filename()
+        chooser.destroy()
+        return Path(filename) if response == Gtk.ResponseType.OK and filename else None
+
+    def save_output_dialog(self, pane: TerminalPane | None = None) -> None:
+        pane = pane or self.get_active_terminal()
+        if pane is None:
+            return
+        path = self.output_file_chooser("Salvar saída do terminal", "Salvar", pane)
+        if path is None:
+            return
+        try:
+            lines = pane.save_output(path)
+        except OSError as error:
+            show_error(self, "Não foi possível salvar", str(error))
+            return
+        self.show_toast(f"{lines} linhas salvas em {shorten_home(path)}")
+
+    def toggle_recording(self, pane: TerminalPane | None = None) -> None:
+        pane = pane or self.get_active_terminal()
+        if pane is None:
+            return
+        if pane.recorder is not None:
+            recorder = pane.stop_recording()
+            note = f" ({recorder.lost_rows} linhas perdidas: histórico excedido)" if recorder and recorder.lost_rows else ""
+            self.show_toast(f"Gravação salva em {shorten_home(recorder.path)}{note}")
+        else:
+            path = self.output_file_chooser("Gravar saída do terminal", "Gravar", pane)
+            if path is None:
+                return
+            try:
+                pane.start_recording(path)
+            except OSError as error:
+                show_error(self, "Não foi possível gravar", str(error))
+                return
+        self.update_recording_marks()
+
+    def update_recording_marks(self) -> None:
+        for pane, label in self.tab_labels.items():
+            frame = self.frame_for_pane(pane)
+            recording = any(item.recorder is not None for item in self.page_panes.get(frame, []))
+            context = label.get_parent().get_style_context()
+            if recording:
+                context.add_class("tab-recording")
+            else:
+                context.remove_class("tab-recording")
+        self.update_status()
+
+    def show_toast(self, message: str) -> None:
+        """A short message in the status bar, without a dialog to dismiss."""
+        self.toast_text = message
+        self.update_status()
+        if getattr(self, "toast_source", 0):
+            GLib.source_remove(self.toast_source)
+        self.toast_source = GLib.timeout_add_seconds(6, self.clear_toast)
+
+    def clear_toast(self) -> bool:
+        self.toast_text = ""
+        self.toast_source = 0
+        if not self.closing_window:
+            self.update_status()
+        return False
 
     def on_pane_bell(self, pane: TerminalPane) -> None:
         if self.is_active() and pane is self.get_active_terminal():
@@ -2281,6 +2364,8 @@ class HackerTerminal(Gtk.ApplicationWindow):
             ("Aba anterior", "Terminal", lambda: self.cycle_tab(-1)),
             ("Tela cheia", "Interface", self.toggle_fullscreen),
             ("Visualizar imagem ou planilha…", "Arquivo", self.choose_file_to_view),
+            ("Salvar saída do terminal…", "Arquivo", self.save_output_dialog),
+            ("Gravar saída do terminal (iniciar/parar)", "Arquivo", self.toggle_recording),
             ("Aumentar fonte", "Terminal", lambda: self.run_shortcut_action("zoom_in")),
             ("Diminuir fonte", "Terminal", lambda: self.run_shortcut_action("zoom_out")),
             ("Tamanho padrão da fonte", "Terminal", lambda: self.run_shortcut_action("zoom_reset")),
@@ -2366,6 +2451,9 @@ class HackerTerminal(Gtk.ApplicationWindow):
             directory_text = shorten_home(viewer.path)
         if self.viewers:
             parts.append(f"{len(self.viewers)} {'VISUALIZAÇÃO' if len(self.viewers) == 1 else 'VISUALIZAÇÕES'}")
+        recording = sum(1 for pane in self.terminals() if pane.recorder is not None)
+        if recording:
+            parts.insert(0, "● GRAVANDO" if recording == 1 else f"● GRAVANDO {recording}")
         if terminal is not None:
             directory = terminal.current_working_directory()
             directory_text = shorten_home(directory)
@@ -2377,6 +2465,8 @@ class HackerTerminal(Gtk.ApplicationWindow):
         text = " • ".join(parts)
         if self.status.get_text() != text:
             self.status.set_text(text)
+        if getattr(self, "toast_text", ""):
+            directory_text = self.toast_text
         if self.status_context.get_text() != directory_text:
             self.status_context.set_text(directory_text)
             self.status_context.set_tooltip_text(directory_text or None)
@@ -2397,7 +2487,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
     def on_window_destroy(self, _window) -> None:
         self.open_server.stop()
         context = GLib.MainContext.default()
-        for attribute in ("status_source_id", "autosave_source_id", "command_source_id"):
+        for attribute in ("status_source_id", "autosave_source_id", "command_source_id", "toast_source"):
             source = getattr(self, attribute, 0)
             # A callback that raised was already dropped by GLib; removing it
             # again would warn, so only remove sources that still exist.

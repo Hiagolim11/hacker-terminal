@@ -137,6 +137,121 @@ def format_duration(seconds: float) -> str:
     return f"{hours} h {minutes:02d} min"
 
 
+HTML_HEADER = (
+    "<!doctype html>\n<html><head><meta charset=\"utf-8\"><title>{title}</title>"
+    "<style>body{{background:{background};color:{foreground};margin:24px}}"
+    "pre{{font:13px/1.35 monospace;white-space:pre-wrap;margin:0}}</style></head><body>\n"
+)
+
+
+def unlimited_scrollback(limit: int) -> bool:
+    # VTE reports an unlimited scrollback (set as -1) as G_MAXLONG.
+    return limit < 0 or limit >= 2**31
+
+
+class OutputRecorder:
+    """Append a pane's finished lines to a file while recording.
+
+    Lines are written as soon as the cursor has moved past them, every
+    couple of seconds, so a later `clear` (which may wipe the scrollback)
+    or a scrollback overflow cannot lose what was already recorded.
+    """
+
+    FLUSH_SECONDS = 1
+
+    def __init__(self, terminal: Vte.Terminal, path: Path, html: bool, header: str = "") -> None:
+        self.terminal = terminal
+        self.path = path
+        self.html = html
+        self.saved_row = terminal.get_cursor_position()[1]
+        self.lines = 0
+        self.lost_rows = 0
+        self.handle = path.open("w", encoding="utf-8")
+        os.chmod(path, 0o600)
+        if header:
+            self.handle.write(header)
+        self.source_id = GLib.timeout_add_seconds(self.FLUSH_SECONDS, self._tick)
+        # Fast output could push unsaved rows out of the scrollback between
+        # ticks; flush early once half of it is pending.
+        self.changed_handler = terminal.connect("contents-changed", self._on_contents_changed)
+
+    def _on_contents_changed(self, terminal) -> None:
+        # The scrollback is unlimited while recording, so this only keeps
+        # each write (and the temporary scrollback) reasonably small.
+        if self.handle is not None and terminal.get_cursor_position()[1] - self.saved_row > 5_000:
+            self._tick()
+
+    def first_available_row(self) -> int:
+        limit = self.terminal.get_scrollback_lines()
+        if unlimited_scrollback(limit):
+            return 0  # nothing has been dropped
+        cursor_row = self.terminal.get_cursor_position()[1]
+        return max(0, cursor_row - limit + 1)
+
+    def flush(self) -> None:
+        if self.handle is None:
+            return
+        cursor_row = self.terminal.get_cursor_position()[1]
+        if cursor_row < self.saved_row:
+            self.saved_row = cursor_row  # the scrollback was reset under us
+        first = self.first_available_row()
+        if self.saved_row < first:
+            self.lost_rows += first - self.saved_row
+            self.saved_row = first
+        end = cursor_row - 1  # only rows the cursor has left are final
+        if end < self.saved_row:
+            return
+        fmt = Vte.Format.HTML if self.html else Vte.Format.TEXT
+        result = self.terminal.get_text_range_format(fmt, self.saved_row, 0, end, self.terminal.get_column_count())
+        text = result[0] if isinstance(result, tuple) else result
+        if text:
+            if self.html:
+                text = text.replace("<pre>", "").replace("</pre>", "")
+            self.handle.write(text if text.endswith("\n") else text + "\n")
+            self.handle.flush()
+        self.lines += end - self.saved_row + 1
+        self.saved_row = end + 1
+
+    def _tick(self) -> bool:
+        if self.handle is None:
+            return False
+        try:
+            self.flush()
+        except (OSError, ValueError) as error:
+            LOGGER.warning("gravação interrompida: %s", error)
+            self.stop()
+            return False
+        return True
+
+    def stop(self) -> None:
+        if self.handle is None:
+            return
+        if self.source_id and GLib.MainContext.default().find_source_by_id(self.source_id) is not None:
+            GLib.source_remove(self.source_id)
+        self.source_id = 0
+        if self.changed_handler:
+            self.terminal.disconnect(self.changed_handler)
+            self.changed_handler = 0
+        try:
+            # Include the current line too: recording is over.
+            cursor_row = self.terminal.get_cursor_position()[1]
+            if cursor_row >= self.saved_row:
+                fmt = Vte.Format.HTML if self.html else Vte.Format.TEXT
+                result = self.terminal.get_text_range_format(
+                    fmt, max(self.saved_row, self.first_available_row()), 0, cursor_row, self.terminal.get_column_count()
+                )
+                text = result[0] if isinstance(result, tuple) else result
+                if text and text.strip():
+                    if self.html:
+                        text = text.replace("<pre>", "").replace("</pre>", "")
+                    self.handle.write(text.rstrip("\n") + "\n")
+            if self.html:
+                self.handle.write("</pre></body></html>\n")
+        finally:
+            self.handle.close()
+            self.handle = None
+
+
 def path_from_file_uri(uri: str | None) -> Path | None:
     if not uri:
         return None
@@ -240,6 +355,7 @@ class TerminalPane(Gtk.Box):
         self.on_preferences_changed = on_preferences_changed
         self.on_bell_callback: Callable[["TerminalPane"], None] | None = None
         self.on_view_file: Callable[["TerminalPane", Path | None], None] | None = None
+        self.on_output_action: Callable[["TerminalPane", str], None] | None = None
         self.pane_id = uuid.uuid4().hex
         self.extra_env: dict[str, str] = {}
         self.link_tag = -1
@@ -250,6 +366,7 @@ class TerminalPane(Gtk.Box):
         self.child_pid = -1
         self.title = ""
         self.bell_pending = False
+        self.recorder: OutputRecorder | None = None
         self.command_started: float | None = None
         self.command_name: str | None = None
         self.zoom_scroll = 0.0
@@ -322,7 +439,8 @@ class TerminalPane(Gtk.Box):
         preferences = self.config.preferences
         self.font_choice = choose_font(preferences.font)
         self.terminal.set_font(Pango.FontDescription(f"{self.font_choice.family} {preferences.font_size}"))
-        self.terminal.set_scrollback_lines(preferences.scrollback_lines)
+        if getattr(self, "recorder", None) is None:
+            self.terminal.set_scrollback_lines(preferences.scrollback_lines)
         self.terminal.set_cursor_shape(CURSOR_SHAPES.get(preferences.cursor_shape, Vte.CursorShape.BLOCK))
         self.terminal.set_cursor_blink_mode(CURSOR_BLINK.get(preferences.cursor_blink, Vte.CursorBlinkMode.SYSTEM))
         self.terminal.set_bold_is_bright(preferences.bold_is_bright)
@@ -334,6 +452,7 @@ class TerminalPane(Gtk.Box):
         self.terminal.set_color_cursor(rgba(theme.cursor))
         self.terminal.set_color_highlight(rgba(theme.selection_background))
         self.terminal.set_color_highlight_foreground(rgba(theme.selection_foreground))
+        self.theme_colors = (theme.terminal_background, theme.terminal_foreground)
         self.terminal.set_colors(
             rgba(theme.terminal_foreground),
             rgba(theme.terminal_background, preferences.opacity / 100),
@@ -419,6 +538,8 @@ class TerminalPane(Gtk.Box):
         if not self.shell_running:
             self.terminal.feed(b"\r\n\x1b[33mO shell ainda nao esta disponivel.\x1b[0m\r\n")
             return
+        if self.recorder is not None:
+            self.recorder.flush()
         self.terminal.feed_child((command + "\n").encode())
 
     def copy(self) -> None:
@@ -475,6 +596,48 @@ class TerminalPane(Gtk.Box):
         current = path_from_file_uri(self.terminal.get_current_directory_uri())
         return current or self.config.working_directory
 
+    # ------------------------------------------------- saving and recording
+
+    def html_header(self, title: str) -> str:
+        background, foreground = getattr(self, "theme_colors", ("#000000", "#ffffff"))
+        return HTML_HEADER.format(title=GLib.markup_escape_text(title), background=background, foreground=foreground) + "<pre>"
+
+    def save_output(self, path: Path) -> int:
+        """Write everything still in the scrollback; returns the line count."""
+        html = path.suffix.lower() in (".html", ".htm")
+        cursor_row = self.terminal.get_cursor_position()[1]
+        limit = self.terminal.get_scrollback_lines()
+        first = 0 if unlimited_scrollback(limit) else max(0, cursor_row - limit + 1)
+        fmt = Vte.Format.HTML if html else Vte.Format.TEXT
+        result = self.terminal.get_text_range_format(fmt, first, 0, cursor_row, self.terminal.get_column_count())
+        text = (result[0] if isinstance(result, tuple) else result) or ""
+        if html:
+            text = self.html_header(path.stem) + text.replace("<pre>", "").replace("</pre>", "") + "</pre></body></html>\n"
+        elif not text.endswith("\n"):
+            text += "\n"
+        temporary = path.with_name(f".{path.name}.tmp")
+        temporary.write_text(text, encoding="utf-8")
+        temporary.chmod(0o600)
+        temporary.replace(path)
+        return cursor_row - first + 1
+
+    def start_recording(self, path: Path) -> None:
+        self.stop_recording()
+        html = path.suffix.lower() in (".html", ".htm")
+        self.recorder = OutputRecorder(self.terminal, path, html, self.html_header(path.stem) if html else "")
+        # VTE handles a burst of output in one go and only then reports it,
+        # so a bounded scrollback could drop rows before they are recorded.
+        # Unlimited scrollback lives in compressed temporary files, not RAM.
+        self.terminal.set_scrollback_lines(-1)
+
+    def stop_recording(self) -> OutputRecorder | None:
+        recorder, self.recorder = self.recorder, None
+        if recorder is not None:
+            recorder.stop()
+            if not self.closing:
+                self.terminal.set_scrollback_lines(self.config.preferences.scrollback_lines)
+        return recorder
+
     def poll_command(self, now: float) -> tuple[str, float] | None:
         """Track the running command; report (name, duration) when it ends."""
         running = foreground_child(self.child_pid) if self.shell_running and not self.config.command else None
@@ -498,6 +661,10 @@ class TerminalPane(Gtk.Box):
 
     def on_terminal_key_press(self, terminal, event) -> bool:
         # Shortcuts are dispatched by the window so that users can rebind them.
+        if self.recorder is not None and event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            # Everything before a new command is final: save it before the
+            # command can clear the scrollback.
+            self.recorder.flush()
         if self.sound_enabled:
             KeySoundEngine.shared().press(event.hardware_keycode, event.keyval)
         return False
@@ -568,6 +735,10 @@ class TerminalPane(Gtk.Box):
             ("Pesquisar", lambda *_: self.show_search()),
             ("Limpar", lambda *_: self.run_command("clear")),
         ]
+        if self.on_output_action is not None:
+            actions.append(("Salvar saída…", lambda *_: self.on_output_action(self, "save")))
+            recording = "Parar gravação" if self.recorder is not None else "Gravar saída…"
+            actions.append((recording, lambda *_: self.on_output_action(self, "record")))
         if self.on_view_file is not None:
             actions.append(("Visualizar arquivo…", lambda *_: self.on_view_file(self, None)))
             if viewable is not None:
@@ -620,6 +791,7 @@ class TerminalPane(Gtk.Box):
 
     def on_destroy(self, _widget) -> None:
         self.closing = True
+        self.stop_recording()
         if self.spawn_cancellable is not None:
             self.spawn_cancellable.cancel()
             self.spawn_cancellable = None

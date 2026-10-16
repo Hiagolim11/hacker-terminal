@@ -244,6 +244,34 @@ def main() -> int:
             if not window.open_socket or origin.extra_env.get("HACKER_TERMINAL_SOCKET") != str(window.open_socket):
                 raise AssertionError("terminal panes do not receive the ht-open socket")
 
+            # Saving and recording the output (fed directly, no shell needed).
+            recorded = window.get_active_terminal()
+            recorded.terminal.feed(b"antes da gravacao\r\n")
+            wait_for(lambda: False, 0.3)
+            record_path = root / "gravacao.txt"
+            recorded.start_recording(record_path)
+            if recorded.terminal.get_scrollback_lines() < 2**31:
+                raise AssertionError("recording did not lift the scrollback limit")
+            window.update_recording_marks()
+            if "GRAVANDO" not in window.status.get_text():
+                raise AssertionError("status bar does not show the recording")
+            recorded.terminal.feed(b"".join(b"gravada %d\r\n" % index for index in range(1500)))
+            wait_for(lambda: False, 1.6)
+            recorder = recorded.stop_recording()
+            window.update_recording_marks()
+            if recorded.terminal.get_scrollback_lines() != preferences.scrollback_lines:
+                raise AssertionError("scrollback limit was not restored after recording")
+            lines = record_path.read_text(encoding="utf-8").splitlines()
+            if "antes da gravacao" in lines or lines.count("gravada 0") != 1 or "gravada 1499" not in lines:
+                raise AssertionError(f"recording content is wrong: {lines[:3]} … {lines[-3:]}")
+            if recorder.lost_rows or record_path.stat().st_mode & 0o777 != 0o600:
+                raise AssertionError("recording lost rows or is not private")
+            if "GRAVANDO" in window.status.get_text():
+                raise AssertionError("status bar still shows a stopped recording")
+            saved = root / "saida.html"
+            if recorded.save_output(saved) < 1500 or "gravada 1499" not in saved.read_text(encoding="utf-8"):
+                raise AssertionError("saving the scrollback as HTML failed")
+
             # Long command notifications: drive poll_command with fake /proc data.
             import hackerterminal.terminal as terminal_module
 
