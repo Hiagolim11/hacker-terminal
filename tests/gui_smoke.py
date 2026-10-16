@@ -273,7 +273,7 @@ def main() -> int:
             def outputs(pane):
                 row = pane.terminal.get_cursor_position()[1]
                 text = pane.terminal.get_text_range_format(Vte.Format.TEXT, 0, 0, row, 200)[0]
-                return [line for line in text.splitlines() if line.strip() == "BROAD42"]
+                return ["BROAD42"] * text.count("BROAD42")
 
             if not wait_for(lambda: all(len(outputs(pane)) == 1 for pane in order), 20):
                 screens = []

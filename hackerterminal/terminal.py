@@ -446,6 +446,7 @@ class TerminalPane(Gtk.Box):
         self.prompts: list[PromptMark] = []
         self.broadcast_peers: list["TerminalPane"] = []
         self.mirroring = False
+        self.banner_shown = False
         self.last_mark_sequence = -1
         self.on_command_done: Callable[["TerminalPane", PromptMark], None] | None = None
         self.gutter_handler = 0
@@ -567,6 +568,11 @@ class TerminalPane(Gtk.Box):
         else:
             argv = shell_argv(self.config.preferences.shell)
         LOGGER.debug("iniciando %s em %s", argv, self.config.working_directory)
+        if not self.banner_shown:
+            # Before the shell starts, so its prompt lands below the banner;
+            # printing it later raced with the shell and garbled lines.
+            self.banner_shown = True
+            self.show_banner()
         child_env = dict(os.environ)
         child_env.update({"TERM": "xterm-256color", "COLORTERM": "truecolor", "HACKER_TERMINAL": "1"})
         child_env.update(self.extra_env)
@@ -611,7 +617,6 @@ class TerminalPane(Gtk.Box):
         self.child_pid = process_id
         self.shell_running = True
         self.terminal.grab_focus()
-        GLib.timeout_add(250, self.show_banner)
 
     def show_banner(self) -> bool:
         if self.config.command or self.closing:
@@ -625,7 +630,7 @@ class TerminalPane(Gtk.Box):
         )
         message = f"HACKER-TERMINAL ONLINE | fonte: {self.font_choice.family} ({glyph_status})"
         self.terminal.feed(
-            (f"\r\n\x1b[1;32m{message}\x1b[0m\r\nUse somente em sistemas autorizados.\r\n").encode()
+            (f"\x1b[1;32m{message}\x1b[0m\r\nUse somente em sistemas autorizados.\r\n").encode()
         )
         return False
 
