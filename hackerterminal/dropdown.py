@@ -71,3 +71,37 @@ def bind_xfce(key: str, command: str) -> tuple[bool, str]:
     if result.returncode != 0:
         return False, result.stderr.strip() or "xfconf-query falhou"
     return True, f"{key} agora abre e esconde o terminal suspenso."
+
+
+def xfce_dropdown_key() -> str | None:
+    """The XFCE key currently bound to the drop-down terminal, if any."""
+    try:
+        result = subprocess.run(
+            ["xfconf-query", "-c", XFCONF_CHANNEL, "-l", "-v"],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    prefix = "/commands/custom/"
+    for line in result.stdout.splitlines():
+        name, _, command = line.partition(" ")
+        if name.startswith(prefix) and "--dropdown" in command and "hacker" in command:
+            return name[len(prefix):]
+    return None
+
+
+def unbind_xfce(key: str) -> tuple[bool, str]:
+    """Remove our binding; another program's key is never touched."""
+    current = xfce_binding(key)
+    if not current or "--dropdown" not in current:
+        return False, f"{key} não está associado ao terminal suspenso."
+    try:
+        result = subprocess.run(
+            ["xfconf-query", "-c", XFCONF_CHANNEL, "-p", xfce_property(key), "-r"],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        return False, str(error)
+    if result.returncode != 0:
+        return False, result.stderr.strip() or "xfconf-query falhou"
+    return True, f"{key} não abre mais o terminal suspenso."

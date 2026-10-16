@@ -192,6 +192,8 @@ notebook > header > arrow {{ color: {self.muted}; }}
 .tab-recording label:first-child {{ font-weight: 700; }}
 .terminal-frame.broadcast {{ border: 2px solid {self.danger}; }}
 window.dropdown {{ border-bottom: 2px solid {self.accent}; }}
+.status-ok {{ color: {self.accent}; font-weight: 700; }}
+.status-warning {{ color: {self.danger}; font-weight: 700; }}
 .pane-name {{ background: {self.surface}; color: {self.accent}; padding: 2px 10px; font-size: 0.85em; font-weight: 700; border-bottom: 1px solid {self.border}; }}
 .pane-inactive .pane-name {{ color: {self.muted}; font-weight: 400; }}
 .tab-broadcast label {{ color: {self.danger}; font-weight: 700; }}

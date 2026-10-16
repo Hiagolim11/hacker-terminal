@@ -23,7 +23,7 @@ from .constants import DEFAULT_THEME
 from .fonts import choose_font, installed_font_families
 from .connections import Connection, ConnectionError, ConnectionStore, validate as validate_connection
 from .documents import kind_of
-from .dropdown import DEFAULT_KEY, bind_xfce, launch_command, xfce_available, xfce_binding
+from .dropdown import DEFAULT_KEY, bind_xfce, launch_command, unbind_xfce, xfce_available, xfce_binding, xfce_dropdown_key
 from .dropdown import geometry as dropdown_geometry
 from .openserver import SOCKET_ENV, OpenServer
 from .keysound import (
@@ -1270,20 +1270,46 @@ class PreferencesDialog(Gtk.Dialog):
         general.field("Altura (% da tela)", self.dropdown_height)
         self.dropdown_autohide = Gtk.Switch(active=preferences.dropdown_autohide)
         general.field("Esconder ao perder o foco", self.dropdown_autohide)
-        command = launch_command()
+        self.dropdown_command = launch_command()
+        test_button = Gtk.Button(label="Testar agora")
+        test_button.set_tooltip_text("Abre ou esconde o terminal suspenso, como o atalho faria")
+        test_button.connect("clicked", lambda *_: self.test_dropdown())
         if xfce_available():
-            shortcut_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-            self.dropdown_key = Gtk.Entry(text=DEFAULT_KEY, width_chars=10)
+            # Full width and wrapping, so it stays usable in a narrow window.
+            self.dropdown_status = Gtk.Label(xalign=0)
+            self.dropdown_status.set_line_wrap(True)
+            general.full(self.dropdown_status)
+            # Two short rows: they fit the dialog's narrowest width as well.
+            key_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            key_box.pack_start(Gtk.Label(label="Tecla"), False, False, 0)
+            self.dropdown_key = Gtk.Entry(text=xfce_dropdown_key() or DEFAULT_KEY, width_chars=12)
             self.dropdown_key.set_tooltip_text("Formato GTK: F12, <Super>grave, <Primary><Alt>t…")
-            bind_button = Gtk.Button(label="Associar no XFCE")
-            bind_button.connect("clicked", lambda *_: self.bind_dropdown_key(command))
-            shortcut_row.pack_start(self.dropdown_key, False, False, 0)
-            shortcut_row.pack_start(bind_button, False, False, 0)
-            current = xfce_binding(DEFAULT_KEY)
-            state = "já configurado" if current and "--dropdown" in current else "ainda não configurado"
-            general.field("Atalho global", shortcut_row, f"{DEFAULT_KEY}: {state}. O atalho executa: {command}")
+            self.dropdown_key.connect("changed", lambda *_: self.schedule_dropdown_status())
+            self.dropdown_key.connect("activate", lambda *_: self.bind_dropdown_key())
+            key_box.pack_start(self.dropdown_key, False, False, 0)
+            self.dropdown_bind = Gtk.Button(label="Ativar atalho")
+            self.dropdown_bind.connect("clicked", lambda *_: self.bind_dropdown_key())
+            self.dropdown_unbind = Gtk.Button(label="Desativar")
+            self.dropdown_unbind.connect("clicked", lambda *_: self.unbind_dropdown_key())
+            key_box.pack_start(self.dropdown_bind, False, False, 0)
+            actions_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            actions_box.pack_start(self.dropdown_unbind, False, False, 0)
+            actions_box.pack_start(test_button, False, False, 0)
+            for row in (key_box, actions_box):
+                row.set_halign(Gtk.Align.START)
+                general.full(row)
+            self.dropdown_status_source = 0
+            self.update_dropdown_status()
         else:
-            general.hint(f"Para usar como terminal suspenso, crie um atalho global no seu ambiente gráfico que execute: {command}")
+            general.hint(
+                "Crie um atalho global no seu ambiente gráfico (por exemplo, F12) que execute o comando abaixo."
+            )
+            general.full(test_button)
+        command_label = Gtk.Label(label=f"Comando: {self.dropdown_command}", xalign=0, selectable=True)
+        command_label.set_line_wrap(True)
+        command_label.set_line_wrap_mode(Pango.WrapMode.CHAR)
+        command_label.get_style_context().add_class("panel-hint")
+        general.full(command_label)
         self.pages.append_page(general, Gtk.Label(label="Geral"))
 
         # --- Aparência
@@ -1442,24 +1468,71 @@ class PreferencesDialog(Gtk.Dialog):
         index = self.profile.get_active()
         return self.profile_ids[index] if 0 <= index < len(self.profile_ids) else "developer"
 
-    def bind_dropdown_key(self, command: str) -> None:
-        key = self.dropdown_key.get_text().strip()
-        keyval, _modifiers = Gtk.accelerator_parse(key)
-        if not keyval:
-            show_error(self, "Atalho inválido", f"“{key}” não é um atalho do GTK (ex.: F12 ou <Super>grave).")
+    def dropdown_key_name(self) -> str | None:
+        keyval, modifiers = Gtk.accelerator_parse(self.dropdown_key.get_text().strip())
+        return Gtk.accelerator_name(keyval, modifiers) if keyval else None
+
+    def schedule_dropdown_status(self) -> None:
+        # Debounced: each check asks xfconf, no need to do it per keystroke.
+        if self.dropdown_status_source:
+            GLib.source_remove(self.dropdown_status_source)
+        self.dropdown_status_source = GLib.timeout_add(300, self.update_dropdown_status)
+
+    def update_dropdown_status(self) -> bool:
+        self.dropdown_status_source = 0
+        key = self.dropdown_key_name()
+        active_key = xfce_dropdown_key()
+        context = self.dropdown_status.get_style_context()
+        for name in ("status-ok", "status-warning"):
+            context.remove_class(name)
+        if key is None:
+            text, style = "⚠ Tecla inválida. Exemplos: F12, <Super>grave, <Primary><Alt>t", "status-warning"
+            bind_ok = False
+        elif active_key == key:
+            text, style = f"✓ Ativo — aperte {key} para abrir e esconder o terminal suspenso.", "status-ok"
+            bind_ok = False
+        elif (used_by := xfce_binding(key)) and "--dropdown" not in used_by:
+            text, style = f"⚠ {key} já é usado por “{used_by}”. Escolha outra tecla.", "status-warning"
+            bind_ok = False
+        elif active_key:
+            text, style = f"✓ Ativo em {active_key}. Clique em Ativar atalho para trocar para {key}.", "status-ok"
+            bind_ok = True
+        else:
+            text, style = f"○ Ainda não ativo — clique em Ativar atalho para usar {key}.", None
+            bind_ok = True
+        self.dropdown_status.set_text(text)
+        if style:
+            context.add_class(style)
+        self.dropdown_bind.set_sensitive(bind_ok)
+        self.dropdown_unbind.set_sensitive(active_key is not None)
+        return False
+
+    def bind_dropdown_key(self) -> None:
+        key = self.dropdown_key_name()
+        if key is None:
+            self.update_dropdown_status()
             return
-        key = Gtk.accelerator_name(keyval, _modifiers)
-        ok, message = bind_xfce(key, command)
+        previous = xfce_dropdown_key()
+        ok, message = bind_xfce(key, self.dropdown_command)
         if not ok:
-            show_error(self, "Atalho não configurado", message)
-            return
-        dialog = Gtk.MessageDialog(
-            transient_for=self, modal=True, message_type=Gtk.MessageType.INFO,
-            buttons=Gtk.ButtonsType.OK, text="Atalho configurado",
-        )
-        dialog.format_secondary_text(message)
-        dialog.run()
-        dialog.destroy()
+            show_error(self, "Atalho não ativado", message)
+        elif previous and previous != key:
+            unbind_xfce(previous)  # one key at a time
+        self.update_dropdown_status()
+
+    def unbind_dropdown_key(self) -> None:
+        active = xfce_dropdown_key()
+        if active is not None:
+            ok, message = unbind_xfce(active)
+            if not ok:
+                show_error(self, "Atalho não removido", message)
+        self.update_dropdown_status()
+
+    def test_dropdown(self) -> None:
+        try:
+            Gio.Subprocess.new(shlex.split(self.dropdown_command), Gio.SubprocessFlags.NONE)
+        except GLib.Error as error:
+            show_error(self, "Não foi possível abrir o terminal suspenso", error.message)
 
     def update_profile_note(self) -> None:
         profile = self.profile_manager.get(self.selected_profile())
@@ -2560,6 +2633,11 @@ class HackerTerminal(Gtk.ApplicationWindow):
         self.stick()
         self.get_style_context().add_class("dropdown")
         self.connect("focus-out-event", self.on_dropdown_focus_out)
+        # Follow resolution and monitor changes while it is on screen.
+        screen = self.get_screen()
+        if screen is not None:
+            screen.connect("monitors-changed", lambda *_: self.place_dropdown_if_visible())
+            screen.connect("size-changed", lambda *_: self.place_dropdown_if_visible())
 
     def dropdown_area(self) -> tuple[int, int, int, int]:
         """Work area of the monitor under the pointer (multi-monitor aware)."""
@@ -2581,11 +2659,9 @@ class HackerTerminal(Gtk.ApplicationWindow):
             self.save_session()
             self.hide()
             return
-        x, y, width, height = dropdown_geometry(self.dropdown_area(), self.preferences.dropdown_height)
-        self.resize(width, height)
-        self.move(x, y)
+        self.place_dropdown()
         self.show()
-        self.move(x, y)
+        self.place_dropdown()
         # Activated from a global shortcut, the window manager may refuse
         # focus to a plain present(); the X server time counts as user action.
         timestamp = Gtk.get_current_event_time()
@@ -2596,6 +2672,15 @@ class HackerTerminal(Gtk.ApplicationWindow):
         pane = self.get_active_terminal()
         if pane is not None:
             pane.terminal.grab_focus()
+
+    def place_dropdown(self) -> None:
+        x, y, width, height = dropdown_geometry(self.dropdown_area(), self.preferences.dropdown_height)
+        self.resize(width, height)
+        self.move(x, y)
+
+    def place_dropdown_if_visible(self) -> None:
+        if self.dropdown and self.get_visible() and not self.closing_window:
+            self.place_dropdown()
 
     def on_dropdown_focus_out(self, *_args) -> bool:
         if self.preferences.dropdown_autohide:
@@ -3058,6 +3143,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
 
     def preferences_changed(self) -> None:
         self.preferences.normalize()
+        self.place_dropdown_if_visible()  # a new height applies at once
         self.active_theme = self.theme_manager.get(self.preferences.theme)
         self.preferences.theme = self.active_theme.identifier
         self.load_theme_css()

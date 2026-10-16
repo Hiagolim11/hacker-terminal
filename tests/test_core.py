@@ -1379,6 +1379,32 @@ class DropdownTests(unittest.TestCase):
             self.assertTrue(ok)
             self.assertEqual(calls[-1][-6:], ["/commands/custom/F12", "-n", "-t", "string", "-s", "hacker-terminal --dropdown"])
 
+    def test_finds_and_removes_only_our_binding(self) -> None:
+        from hackerterminal import dropdown
+
+        listing = (
+            "/commands/custom/<Alt>F1      xfce4-popup-whiskermenu --pointer\n"
+            "/commands/custom/<Super>grave /usr/bin/hacker-terminal --dropdown\n"
+        )
+        bindings = {"F12": "", "Print": "xfce4-screenshooter", "<Super>grave": "/usr/bin/hacker-terminal --dropdown"}
+        calls = []
+
+        def fake_run(argv, **_kwargs):
+            calls.append(argv)
+            if "-l" in argv:
+                return subprocess.CompletedProcess(argv, 0, listing, "")
+            value = bindings.get(argv[argv.index("-p") + 1].removeprefix("/commands/custom/"), "")
+            return subprocess.CompletedProcess(argv, 0 if value or "-r" in argv else 1, value, "")
+
+        with patch.object(dropdown.subprocess, "run", fake_run):
+            self.assertEqual(dropdown.xfce_dropdown_key(), "<Super>grave")
+            self.assertFalse(dropdown.unbind_xfce("Print")[0])  # someone else's key
+            self.assertFalse(any("-r" in call for call in calls))
+            self.assertTrue(dropdown.unbind_xfce("<Super>grave")[0])
+            self.assertEqual(calls[-1][-2:], ["/commands/custom/<Super>grave", "-r"])
+        with patch.object(dropdown.subprocess, "run", side_effect=OSError("sem xfconf")):
+            self.assertIsNone(dropdown.xfce_dropdown_key())
+
     def test_launch_command_mentions_dropdown(self) -> None:
         from hackerterminal.dropdown import launch_command
 

@@ -551,7 +551,7 @@ O comando é digitado no seu shell, então um erro de conexão fica visível e, 
 
 ### Terminal suspenso (estilo Quake)
 
-`hacker-terminal --dropdown` abre um terminal sem bordas no topo da tela; rodar de novo o esconde e o traz de volta, com as abas intactas. Em *Preferências → Geral → Terminal suspenso* você ajusta a altura, escolhe se ele some ao perder o foco e, no XFCE, cria o **atalho global** (F12 por padrão) com um clique — uma tecla já usada por outro programa nunca é substituída. Em outros ambientes, crie um atalho que execute `hacker-terminal --dropdown`. O terminal suspenso guarda a própria sessão, separada da janela principal.
+`hacker-terminal --dropdown` abre um terminal sem bordas no topo da tela; rodar de novo o esconde e o traz de volta, com as abas intactas. Em *Preferências → Geral → Terminal suspenso* você ajusta a altura, escolhe se ele some ao perder o foco e, no XFCE, ativa o **atalho global** (F12 por padrão) com **Ativar atalho**. O status logo acima diz se o atalho está ✓ ativo, ○ ainda não ativo ou ⚠ em uso por outro programa (que nunca é substituído); **Desativar** remove o atalho e **Testar agora** abre o terminal suspenso sem precisar da tecla. Ele se ajusta sozinho quando a resolução ou os monitores mudam. Em outros ambientes, crie um atalho que execute `hacker-terminal --dropdown`. O terminal suspenso guarda a própria sessão, separada da janela principal.
 
 ### Aviso quando um comando longo termina
 

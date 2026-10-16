@@ -536,6 +536,55 @@ def main() -> int:
             window.preferences_changed()
             if window.action_store is not action_store or len(window.action_panel.action_buttons) != base_actions:
                 raise AssertionError("switching profile did not restore the shared actions")
+            # Drop-down shortcut section, against a fake xfconf (never the real one).
+            import hackerterminal.ui as ui_module
+            import hackerterminal.dropdown as dropdown_module
+            from unittest.mock import patch as mock_patch
+
+            fake_xfconf = {"Print": "xfce4-screenshooter"}
+
+            def fake_binding(key):
+                return fake_xfconf.get(key)
+
+            def fake_active():
+                return next((key for key, value in fake_xfconf.items() if "--dropdown" in value), None)
+
+            def fake_bind(key, command):
+                fake_xfconf[key] = command
+                return True, "ok"
+
+            def fake_unbind(key):
+                fake_xfconf.pop(key, None)
+                return True, "ok"
+
+            with mock_patch.multiple(
+                ui_module, xfce_available=lambda: True, xfce_binding=fake_binding,
+                xfce_dropdown_key=fake_active, bind_xfce=fake_bind, unbind_xfce=fake_unbind,
+            ), mock_patch.object(dropdown_module, "launch_command", lambda: "hacker-terminal --dropdown"):
+                shortcut_dialog = PreferencesDialog(window, preferences, themes, profiles)
+                status = shortcut_dialog.dropdown_status
+                if not status.get_text().startswith("○") or not shortcut_dialog.dropdown_bind.get_sensitive():
+                    raise AssertionError(f"inactive shortcut not explained: {status.get_text()!r}")
+                if shortcut_dialog.dropdown_unbind.get_sensitive():
+                    raise AssertionError("nothing to disable, but Desativar is enabled")
+                shortcut_dialog.bind_dropdown_key()
+                if not status.get_text().startswith("✓ Ativo — aperte F12") or not status.get_style_context().has_class("status-ok"):
+                    raise AssertionError(f"active shortcut not shown: {status.get_text()!r}")
+                shortcut_dialog.dropdown_key.set_text("Print")
+                shortcut_dialog.update_dropdown_status()
+                if "xfce4-screenshooter" not in status.get_text() or shortcut_dialog.dropdown_bind.get_sensitive():
+                    raise AssertionError("a key used by another program was offered")
+                shortcut_dialog.dropdown_key.set_text("<Super>grave")
+                shortcut_dialog.bind_dropdown_key()
+                if fake_active() != "<Super>grave" or "F12" in fake_xfconf:
+                    raise AssertionError(f"switching keys left two bindings: {fake_xfconf}")
+                shortcut_dialog.unbind_dropdown_key()
+                if fake_active() is not None or not status.get_text().startswith("○"):
+                    raise AssertionError("Desativar did not remove the shortcut")
+                if fake_xfconf != {"Print": "xfce4-screenshooter"}:
+                    raise AssertionError(f"another program's key was touched: {fake_xfconf}")
+                shortcut_dialog.destroy()
+
             prefs_dialog = PreferencesDialog(window, preferences, themes, profiles)
             prefs_dialog.refresh_profiles("laboratorio")
             prefs_dialog.update_profile_note()
