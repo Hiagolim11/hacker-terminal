@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 import array
 import json
 import os
@@ -181,7 +182,7 @@ class ActionTests(unittest.TestCase):
             path = Path(directory) / "actions.ini"
             path.write_text("[action:BAD ID]\nlabel=x\ncommand=y\n", encoding="utf-8")
             actions = ActionStore(path).load()
-            self.assertEqual(len(actions), 8)
+            self.assertEqual(len(actions), 10)
             self.assertEqual(actions[0].identifier, "identity")
 
     def test_empty_action_list_is_supported(self) -> None:
@@ -1274,3 +1275,35 @@ class ConnectionTests(unittest.TestCase):
             self.assertNotIn("password", store.path.read_text(encoding="utf-8"))
             store.path.write_text("[ssh:mal]\nname = x\ndestination = -oProxyCommand=id\n", encoding="utf-8")
             self.assertEqual(store.load_saved(), [])  # invalid entries are skipped
+
+
+class CommandFieldTests(unittest.TestCase):
+    def test_fields_and_defaults(self) -> None:
+        from hackerterminal.actions import Field, fields
+
+        self.assertEqual(
+            fields("ping -c {vezes=4} {host} {host} {extra=}"),
+            [Field("vezes", "4"), Field("host"), Field("extra", "")],
+        )
+        self.assertTrue(Field("host").required)
+        self.assertFalse(Field("extra", "").required)
+
+    def test_shell_syntax_is_not_mistaken_for_fields(self) -> None:
+        from hackerterminal.actions import fields
+
+        for command in ("awk '{print $1}' f", "echo ${HOME} ${x:-y}", "cp a.{txt,bak}", "f() { ls; }", "echo {1..3}", "echo \\{x}"):
+            self.assertEqual(fields(command), [], command)
+
+    def test_values_cannot_run_as_code(self) -> None:
+        from hackerterminal.actions import fill
+
+        self.assertEqual(fill("nmap -sV {alvo}", {"alvo": "1.2.3.4; id"}), "nmap -sV '1.2.3.4; id'")
+        self.assertEqual(fill("ping -c {n=4} {h}", {"h": "x"}), "ping -c 4 x")
+        self.assertEqual(fill("curl {url} {flags=}", {"url": "h"}), "curl h ")
+        self.assertEqual(
+            fill('echo "oi {nome}" \'{nome}\'', {"nome": 'a"$(id)`b`\\'}),
+            'echo "oi a\\"\\$(id)\\`b\\`\\\\" \'{nome}\'',
+        )
+        command = fill('printf "%s|%s\\n" {a} "{b}"', {"a": "x y", "b": "$(touch /tmp/pwned) `id`"})
+        result = subprocess.run(["bash", "-c", command], capture_output=True, text=True, check=True)
+        self.assertEqual(result.stdout, "x y|$(touch /tmp/pwned) `id`\n")

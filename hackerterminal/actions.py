@@ -5,6 +5,7 @@ from __future__ import annotations
 import configparser
 import os
 import re
+import shlex
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,6 +13,78 @@ from pathlib import Path
 from .config import default_config_path
 
 ACTION_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+# {alvo} or {porta=80}; a default (even empty) makes the field optional.
+PLACEHOLDER = re.compile(r"\{([^\W\d][\w-]{0,31})(?:=([^{}'\"\n]*))?\}")
+
+
+@dataclass(frozen=True)
+class Field:
+    name: str
+    default: str | None = None   # None: the field must be filled
+
+    @property
+    def required(self) -> bool:
+        return self.default is None
+
+
+def scan(command: str) -> list[tuple[int, int, str, str | None, str]]:
+    """Placeholders as (start, end, name, default, context).
+
+    Context is "plain" or "double" (inside double quotes). Text inside
+    single quotes and ${VAR} are left alone, so awk '{print}' still works.
+    """
+    found = []
+    state = "plain"
+    index = 0
+    while index < len(command):
+        char = command[index]
+        if state == "single":
+            if char == "'":
+                state = "plain"
+        elif char == "\\":
+            index += 1
+        elif char == "'" and state == "plain":
+            state = "single"
+        elif char == '"':
+            state = "plain" if state == "double" else "double"
+        elif char == "{" and (index == 0 or command[index - 1] != "$"):
+            match = PLACEHOLDER.match(command, index)
+            if match:
+                found.append((match.start(), match.end(), match.group(1), match.group(2), state))
+                index = match.end()
+                continue
+        index += 1
+    return found
+
+
+def fields(command: str) -> list[Field]:
+    result: dict[str, Field] = {}
+    for _start, _end, name, default, _context in scan(command):
+        result.setdefault(name, Field(name, default))
+    return list(result.values())
+
+
+def quote_for(value: str, context: str) -> str:
+    if context == "double":
+        for char in ("\\", '"', "$", "`"):
+            value = value.replace(char, "\\" + char)
+        return value
+    return shlex.quote(value) if value else ""
+
+
+def fill(command: str, values: dict[str, str]) -> str:
+    """Replace placeholders with shell-quoted values (a value never runs as code)."""
+    pieces = []
+    last = 0
+    for start, end, name, default, context in scan(command):
+        value = values.get(name)
+        if not value:
+            value = default or ""
+        pieces.append(command[last:start])
+        pieces.append(quote_for(value, context))
+        last = end
+    pieces.append(command[last:])
+    return "".join(pieces)
 
 
 @dataclass(frozen=True)
@@ -28,6 +101,8 @@ DEFAULT_ACTIONS = (
     QuickAction("ports", "Portas locais", "command -v ss >/dev/null && ss -tulpen || echo 'Comando ss nao encontrado'"),
     QuickAction("routes", "Rotas", "command -v ip >/dev/null && ip route || echo 'Comando ip nao encontrado'"),
     QuickAction("processes", "Processos ativos", "ps aux --sort=-%cpu | head -15"),
+    QuickAction("ping", "Pingar host", "ping -c {vezes=4} {host}"),
+    QuickAction("services", "Serviços de um alvo", "nmap -sV {alvo}"),
     QuickAction("ssh", "Conexões SSH", "printf 'SSH config:\\n'; ls -la ~/.ssh 2>/dev/null || echo 'Nenhuma configuracao SSH'"),
     QuickAction("health", "Saúde do sistema", "printf 'DISCO\\n'; df -h /; printf '\\nMEMORIA\\n'; free -h; printf '\\nUPTIME\\n'; uptime"),
     QuickAction("clear", "Limpar terminal", "clear"),

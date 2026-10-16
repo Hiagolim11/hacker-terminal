@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Callable
 
 from .actions import ActionStore, QuickAction
+from .actions import fields as command_fields, fill as fill_command
 from .audio import SoundPlayer, make_tone
 from .config import AppConfig, ConfigStore, Preferences
 from .constants import APP_ID, APP_NAME, VERSION
@@ -181,6 +182,7 @@ class ActionPanel(Gtk.Box):
         self.on_preferences_changed = on_preferences_changed
         self.action_store = action_store
         self.on_edit_actions = on_edit_actions
+        self.field_memory: dict[str, str] = {}  # last values typed into {fields}, this session only
         self.action_buttons: list[Gtk.Button] = []
         self.compact = False
         self.set_size_request(PANEL_WIDTH, -1)
@@ -237,7 +239,9 @@ class ActionPanel(Gtk.Box):
         self.action_buttons = []
         for action in self.action_store.load():
             button = Gtk.Button()
-            button.add(self.button_content("›", action.label, warning=action.confirm))
+            # "…" signals that the action asks for fields first.
+            label = action.label + (" …" if command_fields(action.command) else "")
+            button.add(self.button_content("›", label, warning=action.confirm))
             button.set_halign(Gtk.Align.FILL)
             button.set_relief(Gtk.ReliefStyle.NONE)
             button.get_style_context().add_class("action-button")
@@ -266,6 +270,17 @@ class ActionPanel(Gtk.Box):
         return box
 
     def run_action(self, action: QuickAction) -> None:
+        command = action.command
+        parent = self.get_toplevel()
+        if command_fields(command):
+            dialog = FieldsDialog(parent if isinstance(parent, Gtk.Window) else None, action, self.field_memory)
+            response = dialog.run()
+            command = dialog.command() if response == Gtk.ResponseType.OK else ""
+            if command:
+                dialog.remember()
+            dialog.destroy()
+            if not command:
+                return
         if action.confirm:
             parent = self.get_toplevel()
             dialog = Gtk.MessageDialog(
@@ -275,13 +290,13 @@ class ActionPanel(Gtk.Box):
                 buttons=Gtk.ButtonsType.NONE,
                 text=f"Executar “{action.label}”?",
             )
-            dialog.format_secondary_text(action.command)
+            dialog.format_secondary_text(command)
             dialog.add_buttons("Cancelar", Gtk.ResponseType.CANCEL, "Executar", Gtk.ResponseType.OK)
             response = dialog.run()
             dialog.destroy()
             if response != Gtk.ResponseType.OK:
                 return
-        self.run_command(action.command)
+        self.run_command(command)
 
     def set_compact(self, compact: bool) -> None:
         if compact == self.compact:
@@ -316,6 +331,63 @@ class ActionPanel(Gtk.Box):
         self.on_preferences_changed()
 
 
+class FieldsDialog(Gtk.Dialog):
+    """Asks for the {fields} of a saved command, with a live preview."""
+
+    def __init__(self, parent: Gtk.Window | None, action: QuickAction, memory: dict[str, str]) -> None:
+        super().__init__(title=action.label, transient_for=parent, modal=True)
+        self.action = action
+        self.memory = memory
+        self.add_buttons("Cancelar", Gtk.ResponseType.CANCEL, "Executar", Gtk.ResponseType.OK)
+        mark_suggested(self)
+        self.set_default_response(Gtk.ResponseType.OK)
+        self.set_default_size(520, -1)
+        grid = Gtk.Grid(column_spacing=12, row_spacing=10, margin=16)
+        self.get_content_area().pack_start(grid, True, True, 0)
+        self.entries: dict[str, Gtk.Entry] = {}
+        self.required: set[str] = set()
+        for row, field in enumerate(command_fields(action.command)):
+            label = Gtk.Label(label=field.name.replace("_", " ").capitalize(), xalign=0)
+            entry = Gtk.Entry(text=memory.get(field.name, ""))
+            entry.set_hexpand(True)
+            entry.set_activates_default(True)
+            if field.required:
+                self.required.add(field.name)
+                entry.set_placeholder_text("obrigatório")
+            else:
+                entry.set_placeholder_text(f"padrão: {field.default}" if field.default else "opcional")
+            entry.connect("changed", lambda *_: self.update_preview())
+            grid.attach(label, 0, row, 1, 1)
+            grid.attach(entry, 1, row, 1, 1)
+            self.entries[field.name] = entry
+        self.preview = Gtk.Label(xalign=0, selectable=True)
+        self.preview.set_line_wrap(True)
+        self.preview.set_line_wrap_mode(Pango.WrapMode.CHAR)
+        self.preview.set_max_width_chars(60)
+        self.preview.get_style_context().add_class("monospace")
+        grid.attach(self.preview, 0, len(self.entries), 2, 1)
+        self.show_all()
+        self.update_preview()
+
+    def values(self) -> dict[str, str]:
+        return {name: entry.get_text().strip() for name, entry in self.entries.items()}
+
+    def command(self) -> str:
+        values = self.values()
+        if any(not values[name] for name in self.required):
+            return ""
+        return fill_command(self.action.command, values)
+
+    def remember(self) -> None:
+        self.memory.update({name: value for name, value in self.values().items() if value})
+
+    def update_preview(self) -> None:
+        values = self.values()
+        missing = [name for name in self.required if not values[name]]
+        self.set_response_sensitive(Gtk.ResponseType.OK, not missing)
+        self.preview.set_text("$ " + fill_command(self.action.command, values))
+
+
 class ActionFormDialog(Gtk.Dialog):
     def __init__(self, parent: Gtk.Window, action: QuickAction | None = None) -> None:
         super().__init__(title="Ação rápida", transient_for=parent, modal=True)
@@ -334,7 +406,16 @@ class ActionFormDialog(Gtk.Dialog):
         grid.attach(self.command_entry, 1, 1, 1, 1)
         grid.attach(self.confirm, 1, 2, 1, 1)
         self.label_entry.set_hexpand(True)
-        self.command_entry.set_placeholder_text("ex.: make test")
+        self.command_entry.set_placeholder_text("ex.: nmap -sV {alvo}")
+        hint = Gtk.Label(
+            label="Campos: {alvo} é perguntado ao executar; {porta=80} tem valor padrão. "
+            "Os valores são protegidos com aspas automaticamente.",
+            xalign=0,
+        )
+        hint.set_line_wrap(True)
+        hint.set_max_width_chars(60)
+        hint.get_style_context().add_class("panel-hint")
+        grid.attach(hint, 1, 3, 1, 1)
         self.set_default_size(520, -1)
         self.show_all()
 

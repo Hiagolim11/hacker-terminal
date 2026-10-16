@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from hackerterminal.audio import SoundPlayer
 from hackerterminal.keysound import KeySoundEngine
-from hackerterminal.actions import ActionStore, QuickAction
+from hackerterminal.actions import DEFAULT_ACTIONS, ActionStore, QuickAction
 from hackerterminal.config import AppConfig, ConfigStore, Preferences
 from hackerterminal.profiles import ProfileManager
 from hackerterminal.runtime import Gdk, GLib, Gtk, Vte
@@ -25,6 +25,7 @@ from hackerterminal.ui import (
     ActionEditorDialog,
     BootScreen,
     CommandPaletteDialog,
+    FieldsDialog,
     HackerTerminal,
     HackerTerminalApp,
     PreferencesDialog,
@@ -444,6 +445,21 @@ def main() -> int:
                 raise AssertionError("profile actions were not activated")
             if len(window.action_panel.action_buttons) != base_actions:
                 raise AssertionError("profile actions did not start as a copy of the current list")
+            # Saved commands with {fields}: blocked until required fields are filled.
+            memory: dict[str, str] = {}
+            ping = QuickAction("ping", "Ping", "ping -c {vezes=4} {host}")
+            fields_dialog = FieldsDialog(window, ping, memory)
+            if fields_dialog.get_widget_for_response(Gtk.ResponseType.OK).get_sensitive():
+                raise AssertionError("fields dialog accepted an empty required field")
+            fields_dialog.entries["host"].set_text("10.0.0.1; id")
+            if fields_dialog.command() != "ping -c 4 '10.0.0.1; id'" or "'10.0.0.1; id'" not in fields_dialog.preview.get_text():
+                raise AssertionError(f"fields dialog built {fields_dialog.command()!r}")
+            fields_dialog.remember()
+            fields_dialog.destroy()
+            again = FieldsDialog(window, ping, memory)
+            if again.entries["host"].get_text() != "10.0.0.1; id" or not again.get_widget_for_response(Gtk.ResponseType.OK).get_sensitive():
+                raise AssertionError("fields dialog did not remember the last value")
+            again.destroy()
             window.action_store.save([QuickAction("lab", "Lab", "true")])
             window.action_panel.reload_actions()
             profiles.apply("developer", preferences)
@@ -483,7 +499,7 @@ def main() -> int:
                 or restored_split.get_orientation() != Gtk.Orientation.VERTICAL
             ):
                 raise AssertionError("saved split orientation was not restored")
-            if window.action_panel is None or len(window.action_panel.action_buttons) != 8:
+            if window.action_panel is None or len(window.action_panel.action_buttons) != len(DEFAULT_ACTIONS):
                 raise AssertionError("sidebar actions are missing")
             if not all(button.get_visible() for button in window.action_panel.action_buttons):
                 raise AssertionError("sidebar actions are not visible")
