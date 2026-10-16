@@ -22,6 +22,7 @@ from .constants import APP_ID, APP_NAME, VERSION
 from .constants import DEFAULT_THEME
 from .fonts import choose_font, installed_font_families
 from .connections import Connection, ConnectionError, ConnectionStore, validate as validate_connection
+from .connections import unique_identifier as unique_connection_id
 from .documents import kind_of
 from .dropdown import DEFAULT_KEY, bind_xfce, launch_command, unbind_xfce, xfce_available, xfce_binding, xfce_dropdown_key
 from .dropdown import geometry as dropdown_geometry
@@ -554,11 +555,13 @@ class ConnectionEditorDialog(Gtk.Dialog):
         page.hint("Senhas nunca são guardadas: o ssh pede a senha ou usa sua chave/agente, como de costume.")
         self.show_all()
 
-    def value(self, identifier: str) -> Connection:
+    def value(self, identifier: str | None, taken: set[str] = frozenset()) -> Connection:
+        """The connection typed in; a new one (identifier None) gets a free id from its name."""
         port = self.port.get_value_as_int()
+        name = " ".join(self.name_entry.get_text().split())
         connection = Connection(
-            identifier=identifier,
-            name=" ".join(self.name_entry.get_text().split()),
+            identifier=identifier or unique_connection_id(name, taken),
+            name=name,
             destination=self.destination.get_text().strip(),
             port=port or None,
             identity_file=self.identity.get_text().strip(),
@@ -636,12 +639,13 @@ class SSHManagerDialog(Gtk.Dialog):
     def saved(self) -> list[Connection]:
         return [connection for connection in self.connections if not connection.from_ssh_config]
 
-    def run_editor(self, connection: Connection | None, identifier: str) -> Connection | None:
+    def run_editor(self, connection: Connection | None, identifier: str | None) -> Connection | None:
         editor = ConnectionEditorDialog(self, self.themes, connection)
+        taken = {item.identifier for item in self.connections}
         result = None
         while editor.run() == Gtk.ResponseType.OK:
             try:
-                result = editor.value(identifier)
+                result = editor.value(identifier, taken)
                 break
             except (ConnectionError, ValueError) as error:
                 show_error(editor, "Conexão inválida", str(error))
@@ -649,12 +653,9 @@ class SSHManagerDialog(Gtk.Dialog):
         return result
 
     def add(self) -> None:
-        taken = {connection.identifier for connection in self.connections}
-        created = self.run_editor(None, "")
-        if created is None:
-            return
-        created = dataclasses.replace(created, identifier=self.store.unique_identifier(created.name, taken))
-        self.persist(self.saved() + [created], created.identifier)
+        created = self.run_editor(None, None)
+        if created is not None:
+            self.persist(self.saved() + [created], created.identifier)
 
     def edit(self) -> None:
         current = self.selected_connection()

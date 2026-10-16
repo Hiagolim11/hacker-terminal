@@ -2,6 +2,10 @@
 
 Este projeto segue [Semantic Versioning](https://semver.org/).
 
+## 0.16.1
+
+- Corrige o erro “identificador inválido” ao criar uma conexão SSH em **Nova…**: o identificador interno passa a ser gerado a partir do nome antes da validação. Um teste cobre agora a criação e a edição pelo gerenciador.
+
 ## 0.16.0
 
 - **Integração com o shell** (zsh e bash, automática): cada prompt é marcado. `Ctrl+Shift+↑/↓` pula entre comandos, `Ctrl+Shift+L` copia a saída do último comando, uma faixa na margem fica vermelha nos comandos que falharam, a barra de status mostra o código de saída e o aviso de comando longo diz se ele deu certo. Seus arquivos `.zshrc`/`.bashrc` continuam sendo carregados normalmente; desligue em *Preferências → Geral*. Requer VTE 0.78 ou mais novo (`--diagnose` informa); em versões antigas o terminal funciona como antes.

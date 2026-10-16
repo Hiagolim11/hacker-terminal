@@ -99,6 +99,16 @@ def read_ssh_config(path: Path | None = None) -> list[Connection]:
     return hosts
 
 
+def unique_identifier(name: str, taken: set[str]) -> str:
+    """A free identifier made from the display name: "Produção" -> "producao"."""
+    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    base = re.sub(r"[^a-z0-9]+", "-", ascii_name.lower()).strip("-")[:40] or "conexao"
+    candidate, counter = base, 2
+    while candidate in taken:
+        candidate, counter = f"{base}-{counter}", counter + 1
+    return candidate
+
+
 class ConnectionStore:
     def __init__(self, path: Path | None = None, ssh_config: Path | None = None) -> None:
         self.path = path or default_config_path().with_name("ssh.ini")
@@ -162,12 +172,7 @@ class ConnectionStore:
         return atomic_write_text(self.path, buffer.getvalue(), ".ssh.")
 
     def unique_identifier(self, name: str, taken: set[str]) -> str:
-        ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
-        base = re.sub(r"[^a-z0-9]+", "-", ascii_name.lower()).strip("-")[:40] or "conexao"
-        candidate, counter = base, 2
-        while candidate in taken:
-            candidate, counter = f"{base}-{counter}", counter + 1
-        return candidate
+        return unique_identifier(name, taken)
 
     def promote(self, connection: Connection, taken: set[str]) -> Connection:
         """Turn a ~/.ssh/config host into a saved, editable connection."""

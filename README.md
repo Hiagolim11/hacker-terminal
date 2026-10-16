@@ -239,7 +239,7 @@ hacker-terminal --diagnose
 ```
 
 ```text
-Hacker Terminal 0.16.0
+Hacker Terminal 0.16.1
 GTK: 3.24.52
 VTE: 0.84.1
 Fonte selecionada: JetBrainsMono Nerd Font

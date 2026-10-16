@@ -363,6 +363,37 @@ def main() -> int:
                     window.close_page(frame, force=True)
             window.notebook.set_current_page(window.notebook.page_num(window.frame_for_pane(terminal)))
 
+            # SSH manager: creating connections through "Nova…" (the editor's
+            # modal run() is simulated; everything else is the real path).
+            import hackerterminal.ui as ssh_ui
+            from unittest.mock import patch as ssh_patch
+            from hackerterminal.connections import ConnectionStore
+
+            ssh_store = ConnectionStore(root / "ssh-test.ini", root / "no-ssh-config")
+
+            def typed(name, destination):
+                def fake_run(editor):
+                    editor.name_entry.set_text(name)
+                    editor.destination.set_text(destination)
+                    return Gtk.ResponseType.OK
+                return fake_run
+
+            manager = ssh_ui.SSHManagerDialog(window, ssh_store, themes)
+            for name in ("Umbrel", "Umbrel"):
+                with ssh_patch.object(ssh_ui.ConnectionEditorDialog, "run", typed(name, "umbrel@10.0.0.3")):
+                    manager.add()
+            created = ssh_store.load_saved()
+            if [(c.identifier, c.destination) for c in created] != [("umbrel", "umbrel@10.0.0.3"), ("umbrel-2", "umbrel@10.0.0.3")]:
+                raise AssertionError(f"new SSH connections were not saved: {created}")
+            if manager.selected_connection().identifier != "umbrel-2":
+                raise AssertionError("the new connection was not selected")
+            with ssh_patch.object(ssh_ui.ConnectionEditorDialog, "run", typed("Renomeado", "umbrel@10.0.0.4")):
+                manager.edit()
+            edited = {c.identifier: (c.name, c.destination) for c in ssh_store.load_saved()}
+            if edited != {"umbrel": ("Umbrel", "umbrel@10.0.0.3"), "umbrel-2": ("Renomeado", "umbrel@10.0.0.4")}:
+                raise AssertionError(f"editing an SSH connection failed: {ssh_store.load_saved()}")
+            manager.destroy()
+
             # SSH: a failing connection stays visible in its own themed tab.
             from hackerterminal.connections import Connection
 
