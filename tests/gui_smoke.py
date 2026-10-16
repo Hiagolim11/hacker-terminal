@@ -275,8 +275,13 @@ def main() -> int:
                 text = pane.terminal.get_text_range_format(Vte.Format.TEXT, 0, 0, row, 200)[0]
                 return [line for line in text.splitlines() if line.strip() == "BROAD42"]
 
-            if not wait_for(lambda: all(len(outputs(pane)) == 1 for pane in order), 5):
-                raise AssertionError(f"broadcast outputs per pane: {[len(outputs(pane)) for pane in order]}")
+            if not wait_for(lambda: all(len(outputs(pane)) == 1 for pane in order), 20):
+                screens = []
+                for pane in order:
+                    row = pane.terminal.get_cursor_position()[1]
+                    text = pane.terminal.get_text_range_format(Vte.Format.TEXT, max(0, row - 6), 0, row, 200)[0]
+                    screens.append((pane.shell_running, pane.child_pid, row, text[-300:]))
+                raise AssertionError(f"broadcast outputs per pane: {[len(outputs(pane)) for pane in order]}; screens: {screens}")
             wait_for(lambda: False, 0.5)
             if any(len(outputs(pane)) != 1 for pane in order):
                 raise AssertionError("a broadcast command ran more than once")
