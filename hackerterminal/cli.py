@@ -71,6 +71,9 @@ def diagnose(
     print(f"Tema: {themes.get(preferences.theme).name} ({themes.get(preferences.theme).identifier})")
     print(f"Temas disponíveis: {len(themes.all())}")
     print(f"Log: {log_path()}")
+    from .terminal import HAS_TERMPROPS
+    integration = "disponível (zsh e bash)" if HAS_TERMPROPS else "indisponível (requer VTE 0.78 ou mais novo)"
+    print(f"Integração com o shell: {integration}")
     shortcuts = ShortcutMap(preferences.shortcuts)
     for error in themes.errors:
         print(f"Aviso de tema: {error}", file=sys.stderr)

@@ -48,7 +48,10 @@ FILE_PATTERN = (
 TOOLS_DIRECTORY = Path(__file__).resolve().parent.parent / "bin"
 SHELL_DIRECTORY = Path(__file__).resolve().parent / "shell"
 MARK_PROPERTY = "vte.ext.hackerterminal.mark"
-if MARK_PROPERTY not in Vte.get_termprops():
+# Termprops arrived in VTE 0.78 (Ubuntu 24.04 ships 0.76): without them the
+# shell integration stays off and command alerts fall back to /proc polling.
+HAS_TERMPROPS = hasattr(Vte, "install_termprop") and hasattr(Vte, "get_termprops")
+if HAS_TERMPROPS and MARK_PROPERTY not in Vte.get_termprops():
     # Custom termprops must exist before terminals are created; shell hooks
     # set it with OSC 666 once per prompt.
     Vte.install_termprop(MARK_PROPERTY, Vte.PropertyType.STRING, Vte.PropertyFlags.NONE)
@@ -101,6 +104,8 @@ def command_extra_rows(mark: PromptMark, columns: int) -> int:
 
 def integration_launch(argv: list[str], custom_shell: str) -> tuple[list[str], dict[str, str]]:
     """Adapt the shell command line to load the integration hooks."""
+    if not HAS_TERMPROPS:
+        return argv, {}
     if os.environ.get("HACKER_TERMINAL_SHELL_INTEGRATION", "1").strip().lower() in ("0", "false", "no", "off"):
         return argv, {}
     name = Path(argv[0]).name
@@ -476,7 +481,8 @@ class TerminalPane(Gtk.Box):
         self.terminal.connect("child-exited", self.on_child_exited)
         self.terminal.connect("selection-changed", self.on_selection_changed)
         self.terminal.connect("bell", self.on_bell)
-        self.terminal.connect("termprop-changed", self.on_termprop_changed)
+        if HAS_TERMPROPS:
+            self.terminal.connect("termprop-changed", self.on_termprop_changed)
         self.terminal.connect("commit", self.on_commit)
         self.terminal.connect("notify::window-title", self.on_window_title_changed)
         try:

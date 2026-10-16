@@ -1184,8 +1184,12 @@ class ShellIntegrationTests(unittest.TestCase):
         self.assertEqual(command_extra_rows(PromptMark(10, 2, 1, "for i\ndo\ndone"), 80), 2)
 
     def test_launch_adapts_only_plain_bash_and_zsh(self) -> None:
+        import hackerterminal.terminal as terminal_module
         from hackerterminal.terminal import SHELL_DIRECTORY, integration_launch
 
+        with patch.object(terminal_module, "HAS_TERMPROPS", False):
+            self.assertEqual(integration_launch(["/bin/bash", "-l"], ""), (["/bin/bash", "-l"], {}))
+        self.enterContext(patch.object(terminal_module, "HAS_TERMPROPS", True))
         with patch.dict(os.environ, {"ZDOTDIR": "/meu/zdotdir"}):
             argv, env = integration_launch(["/usr/bin/zsh", "-l"], "")
         self.assertEqual(argv, ["/usr/bin/zsh", "-l"])

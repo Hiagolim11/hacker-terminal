@@ -80,6 +80,11 @@ def check(shell: str) -> None:
 
 
 def main() -> int:
+    from hackerterminal.terminal import HAS_TERMPROPS
+
+    if not HAS_TERMPROPS:
+        print("SKIP: VTE sem termprops (anterior à 0.78); integração com o shell desativada")
+        return 0
     shells = [shell for shell in ("bash", "zsh") if shutil.which(shell)]
     for shell in shells:
         check(shell)
