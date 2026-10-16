@@ -267,7 +267,7 @@ class ThemeTests(unittest.TestCase):
     def test_builtin_themes_are_valid_and_complete(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             manager = ThemeManager(Path(directory))
-            self.assertEqual(len(manager.all()), 13)  # 5 classic + 8 phosphor
+            self.assertEqual(len(manager.all()), 14)  # 5 classic + 8 phosphor + red alert
             self.assertFalse(manager.errors)
             for theme in manager.all():
                 self.assertEqual(len(theme.ansi), 16)
@@ -1211,3 +1211,66 @@ class ShellIntegrationTests(unittest.TestCase):
         subprocess.run(["bash", "-n", str(SHELL_DIRECTORY / "bash" / "integration.bash")], check=True)
         if shutil.which("zsh"):
             subprocess.run(["zsh", "-n", str(SHELL_DIRECTORY / "zsh" / ".zshenv")], check=True)
+
+
+class ConnectionTests(unittest.TestCase):
+    def test_validation_blocks_option_injection(self) -> None:
+        from hackerterminal.connections import Connection, ConnectionError, validate
+
+        validate(Connection("ok", "Servidor", "kali@10.0.0.5", 2222, "~/.ssh/id_ed25519", "-J bastiao -A"))
+        for bad in (
+            Connection("x", "X", "-oProxyCommand=id"),
+            Connection("x", "X", "user@-evil"),
+            Connection("x", "X", "dois hosts"),
+            Connection("x", "X", "host", port=70000),
+            Connection("x", "X", "host", options="outrohost"),
+            Connection("x", "X", "host", options="-o 'sem fim"),
+            Connection("X Y", "X", "host"),
+        ):
+            with self.assertRaises(ConnectionError, msg=bad):
+                validate(bad)
+
+    def test_command_line_is_quoted(self) -> None:
+        from hackerterminal.connections import Connection
+
+        connection = Connection("c", "C", "me@host", 2200, "~/chave com espaço", "-o 'User=x y'")
+        line = connection.command_line()
+        self.assertIn("-p 2200", line)
+        self.assertIn("'User=x y'", line)
+        self.assertEqual(connection.command()[-1], "me@host")
+        self.assertTrue(connection.command()[4].endswith("chave com espaço"))
+
+    def test_reads_ssh_config_hosts(self) -> None:
+        from hackerterminal.connections import read_ssh_config
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config"
+            path.write_text(
+                "# comentário\nHost web db\n  User root\nHost\tlab\nHost=bastiao\nHost *.interno prod-? !x\nHost *\n",
+                encoding="utf-8",
+            )
+            names = [host.name for host in read_ssh_config(path)]
+            self.assertEqual(names, ["web", "db", "lab", "bastiao"])
+            self.assertTrue(all(host.from_ssh_config for host in read_ssh_config(path)))
+        self.assertEqual(read_ssh_config(Path("/definitely/missing")), [])
+
+    def test_store_round_trip_and_ssh_config_merge(self) -> None:
+        from hackerterminal.connections import Connection, ConnectionStore
+
+        with tempfile.TemporaryDirectory() as directory:
+            ssh_config = Path(directory) / "config"
+            ssh_config.write_text("Host lab web\n", encoding="utf-8")
+            store = ConnectionStore(Path(directory) / "ssh.ini", ssh_config)
+            saved = Connection("prod", "Produção", "web", 22, theme="red-alert", confirm=True)
+            self.assertTrue(store.save([saved, Connection("cfg", "lab", "lab", from_ssh_config=True)]))
+            self.assertEqual(store.path.stat().st_mode & 0o777, 0o600)
+            loaded = store.load()
+            self.assertEqual(loaded[0], saved)
+            self.assertEqual([c.name for c in loaded[1:]], ["lab"])  # "web" is already saved
+            self.assertEqual(store.unique_identifier("Produção — banco", set()), "producao-banco")
+            self.assertEqual(store.unique_identifier("Produção", {"producao"}), "producao-2")
+            promoted = store.promote(loaded[1], {"prod"})
+            self.assertFalse(promoted.from_ssh_config)
+            self.assertNotIn("password", store.path.read_text(encoding="utf-8"))
+            store.path.write_text("[ssh:mal]\nname = x\ndestination = -oProxyCommand=id\n", encoding="utf-8")
+            self.assertEqual(store.load_saved(), [])  # invalid entries are skipped

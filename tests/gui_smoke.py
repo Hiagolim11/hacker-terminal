@@ -321,6 +321,33 @@ def main() -> int:
                     window.close_page(frame, force=True)
             window.notebook.set_current_page(window.notebook.page_num(window.frame_for_pane(terminal)))
 
+            # SSH: a failing connection stays visible in its own themed tab.
+            from hackerterminal.connections import Connection
+
+            pages_before_ssh = window.notebook.get_n_pages()
+            red = themes.get("red-alert")
+            ssh_pane = window.connect_ssh(Connection("teste", "Teste local", "nobody@127.0.0.1", 1, theme="red-alert"))
+            if ssh_pane is None or window.notebook.get_n_pages() != pages_before_ssh + 1:
+                raise AssertionError("SSH connection did not open a tab")
+            if ssh_pane.theme_override is not red or "Teste local" not in window.tab_labels[ssh_pane].get_text():
+                raise AssertionError("SSH tab did not get its theme and name")
+
+            def ssh_screen():
+                row = ssh_pane.terminal.get_cursor_position()[1]
+                return ssh_pane.terminal.get_text_range_format(Vte.Format.TEXT, 0, 0, row, 200)[0]
+
+            import shutil as _shutil
+            if _shutil.which("ssh"):
+                if not wait_for(lambda: "port 1" in ssh_screen() or "refused" in ssh_screen().lower(), 15):
+                    raise AssertionError(f"ssh error was not shown in the tab: {ssh_screen()[-300:]!r}")
+                if window.frame_for_pane(ssh_pane) is None:
+                    raise AssertionError("the tab closed after the connection failed")
+            other = window.terminals()[0]
+            window.preferences_changed()
+            if ssh_pane.theme_override is not red or other.theme_override is not None:
+                raise AssertionError("the SSH theme leaked to other panes or was lost")
+            window.close_page(window.frame_for_pane(ssh_pane), force=True)
+
             # Saving and recording the output (fed directly, no shell needed).
             recorded = window.get_active_terminal()
             recorded.terminal.feed(b"antes da gravacao\r\n")

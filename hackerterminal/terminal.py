@@ -447,6 +447,9 @@ class TerminalPane(Gtk.Box):
         self.broadcast_peers: list["TerminalPane"] = []
         self.mirroring = False
         self.banner_shown = False
+        self.theme_override: Theme | None = None
+        self.title_prefix = ""
+        self.pending_input = ""
         self.last_mark_sequence = -1
         self.on_command_done: Callable[["TerminalPane", PromptMark], None] | None = None
         self.gutter_handler = 0
@@ -522,6 +525,8 @@ class TerminalPane(Gtk.Box):
         self.apply_preferences(theme)
 
     def apply_preferences(self, theme: Theme) -> None:
+        # An SSH tab keeps its host's theme whatever the window uses.
+        theme = self.theme_override or theme
         preferences = self.config.preferences
         self.font_choice = choose_font(preferences.font)
         self.terminal.set_font(Pango.FontDescription(f"{self.font_choice.family} {preferences.font_size}"))
@@ -616,6 +621,10 @@ class TerminalPane(Gtk.Box):
             return
         self.child_pid = process_id
         self.shell_running = True
+        if self.pending_input:
+            # Typed before the prompt exists, the tty would echo it twice:
+            # wait for the shell's first output, then let it settle.
+            self.pending_handler = self.terminal.connect("contents-changed", self.on_first_output)
         self.terminal.grab_focus()
 
     def show_banner(self) -> bool:
@@ -632,6 +641,16 @@ class TerminalPane(Gtk.Box):
         self.terminal.feed(
             (f"\x1b[1;32m{message}\x1b[0m\r\nUse somente em sistemas autorizados.\r\n").encode()
         )
+        return False
+
+    def on_first_output(self, _terminal: Vte.Terminal) -> None:
+        self.terminal.disconnect(self.pending_handler)
+        GLib.timeout_add(300, self.send_pending_input)
+
+    def send_pending_input(self) -> bool:
+        if self.pending_input and self.shell_running and not self.closing:
+            command, self.pending_input = self.pending_input, ""
+            self.run_command(command)
         return False
 
     def run_command(self, command: str) -> None:
