@@ -14,8 +14,23 @@ from .config import clamp, default_config_path
 MAX_PANES_PER_TAB = 4
 MAX_PANES = 20
 
-# A layout is a leaf index or ["horizontal"|"vertical", first, second].
+MAX_NAME = 40
+
+# A layout is a leaf index or ["horizontal"|"vertical", first, second] with
+# an optional fourth item: the first child's share of the split (0.05–0.95).
 Layout = int | list
+
+
+def clean_name(value) -> str:
+    """A pane name: printable, single spaced, at most MAX_NAME characters."""
+    if not isinstance(value, str):
+        return ""
+    text = "".join(char if char.isprintable() else " " for char in value)
+    return " ".join(text.split())[:MAX_NAME]
+
+
+def valid_ratio(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and 0.05 <= value <= 0.95
 
 
 @dataclass(frozen=True)
@@ -23,6 +38,10 @@ class SessionTab:
     directories: tuple[Path, ...]
     orientation: str | None = None
     layout: Layout | None = None
+    names: tuple[str, ...] = ()
+
+    def name(self, index: int) -> str:
+        return self.names[index] if index < len(self.names) else ""
 
     def tree(self) -> Layout:
         """The split tree, deriving it from the v2 fields when needed."""
@@ -47,8 +66,9 @@ def valid_layout(layout, count: int) -> bool:
             return True
         return (
             isinstance(node, list)
-            and len(node) == 3
+            and len(node) in (3, 4)
             and node[0] in ("horizontal", "vertical")
+            and (len(node) == 3 or valid_ratio(node[3]))
             and walk(node[1], depth + 1)
             and walk(node[2], depth + 1)
         )
@@ -93,12 +113,15 @@ class SessionStore:
                     raw = [value for value in item.get("directories", []) if isinstance(value, str)]
                     raw = raw[: min(MAX_PANES_PER_TAB, MAX_PANES - total)]
                     directories = tuple(Path(value).expanduser() for value in raw)
+                    raw_names = item.get("names")
+                    names = tuple(clean_name(value) for value in raw_names[: len(directories)]) if isinstance(raw_names, list) else ()
                     if not directories or not all(path.is_dir() for path in directories):
                         # A missing folder breaks the layout: keep what still exists, unsplit.
-                        directories = tuple(path for path in directories if path.is_dir())[:1]
-                        if not directories:
+                        kept = [(path, names[index] if index < len(names) else "")
+                                for index, path in enumerate(directories) if path.is_dir()][:1]
+                        if not kept:
                             continue
-                        tabs_list.append(SessionTab(directories))
+                        tabs_list.append(SessionTab((kept[0][0],), names=(kept[0][1],)))
                         total += 1
                         continue
                     layout = item.get("layout")
@@ -108,8 +131,8 @@ class SessionStore:
                     if orientation not in ("horizontal", "vertical") or len(directories) != 2:
                         orientation = None
                     if layout is None and orientation is None:
-                        directories = directories[:1]
-                    tabs_list.append(SessionTab(directories, orientation, layout))
+                        directories, names = directories[:1], names[:1]
+                    tabs_list.append(SessionTab(directories, orientation, layout, names))
                     total += len(directories)
                 tabs = tuple(tabs_list)
             if not tabs:
@@ -141,7 +164,11 @@ class SessionStore:
             if not valid_layout(layout, len(directories)):
                 directories, layout = directories[:1], 0
             orientation = layout[0] if isinstance(layout, list) and len(directories) == 2 else None
-            tabs.append({"directories": directories, "orientation": orientation, "layout": layout})
+            entry = {"directories": directories, "orientation": orientation, "layout": layout}
+            names = [clean_name(tab.name(index)) for index in range(len(directories))]
+            if any(names):
+                entry["names"] = names
+            tabs.append(entry)
             remaining -= len(directories)
         payload = {
             "version": 3,

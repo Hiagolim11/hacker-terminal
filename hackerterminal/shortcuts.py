@@ -37,6 +37,7 @@ SHORTCUT_ACTIONS = (
     ShortcutAction("search", "Pesquisar no histórico", "<Primary><Shift>f"),
     ShortcutAction("command_palette", "Paleta de comandos", "<Primary><Shift>p"),
     ShortcutAction("ssh_manager", "Conexões SSH", "<Primary><Shift>s"),
+    ShortcutAction("rename_pane", "Renomear painel", "<Primary><Shift>r"),
     ShortcutAction("toggle_panel", "Mostrar ou ocultar ações", "<Primary><Shift>b"),
     ShortcutAction("preferences", "Preferências", "<Primary>comma"),
     ShortcutAction("zoom_in", "Aumentar fonte", "<Primary>plus;<Primary>equal;<Primary>KP_Add"),

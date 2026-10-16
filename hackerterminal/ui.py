@@ -1941,6 +1941,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
             "focus_other_pane": self.focus_other_pane,
             "broadcast": self.toggle_broadcast,
             "ssh_manager": self.show_ssh_manager,
+            "rename_pane": self.rename_pane,
             "next_tab": lambda: self.cycle_tab(1),
             "previous_tab": lambda: self.cycle_tab(-1),
             "previous_prompt": lambda: self.jump_to_prompt(-1),
@@ -2144,6 +2145,9 @@ class HackerTerminal(Gtk.ApplicationWindow):
             pane = self.get_active_terminal()
             if frame is not None and pane is not None:
                 self.rebuild_layout(frame, pane, tab.tree(), tab.directories)
+                for index, leaf in enumerate(self.leaves(frame.get_child())):
+                    if tab.name(index):
+                        leaf.set_custom_name(tab.name(index))
         if self.notebook.get_n_pages():
             self.notebook.set_current_page(state.active_tab)
             return True
@@ -2153,9 +2157,10 @@ class HackerTerminal(Gtk.ApplicationWindow):
         """Replay a saved split tree; ``pane`` already shows its first leaf."""
         if not isinstance(node, list):
             return
-        kind, first, second = node
+        kind, first, second = node[:3]
+        ratio = node[3] if len(node) == 4 else 0.5
         orientation = Gtk.Orientation.HORIZONTAL if kind == "horizontal" else Gtk.Orientation.VERTICAL
-        second_pane = self.split_pane(frame, pane, orientation, directories[self.first_leaf(second)])
+        second_pane = self.split_pane(frame, pane, orientation, directories[self.first_leaf(second)], ratio)
         self.rebuild_layout(frame, pane, first, directories)
         self.rebuild_layout(frame, second_pane, second, directories)
 
@@ -2366,6 +2371,8 @@ class HackerTerminal(Gtk.ApplicationWindow):
         if not self.is_active():
             self.set_urgency_hint(True)
         tab = label.get_text() if label is not None else "Terminal"
+        if pane.custom_name and pane.custom_name not in tab:
+            tab = f"{tab} › {pane.custom_name}"
         if status is None:
             title, verb = "Comando concluído", "terminou"
         elif status == 0:
@@ -2404,6 +2411,30 @@ class HackerTerminal(Gtk.ApplicationWindow):
             self.copy_last_output(pane)
         elif action == "broadcast":
             self.toggle_broadcast(self.frame_for_pane(pane))
+        elif action == "rename":
+            self.rename_pane(pane)
+
+    def rename_pane(self, pane: TerminalPane | None = None) -> None:
+        pane = pane or self.get_active_terminal()
+        if pane is None:
+            return
+        dialog = Gtk.Dialog(title="Renomear painel", transient_for=self, modal=True)
+        dialog.add_buttons("Cancelar", Gtk.ResponseType.CANCEL, "Renomear", Gtk.ResponseType.OK)
+        mark_suggested(dialog)
+        dialog.set_default_response(Gtk.ResponseType.OK)
+        entry = Gtk.Entry(text=pane.custom_name, activates_default=True, max_length=40)
+        entry.set_placeholder_text("ex.: servidor web, logs, build — vazio remove o nome")
+        box = dialog.get_content_area()
+        box.set_spacing(8)
+        box.set_border_width(14)
+        box.pack_start(entry, False, False, 0)
+        dialog.set_default_size(420, -1)
+        dialog.show_all()
+        if dialog.run() == Gtk.ResponseType.OK:
+            pane.set_custom_name(entry.get_text())
+            self.save_session()
+        dialog.destroy()
+        pane.terminal.grab_focus()
 
     def copy_last_output(self, pane: TerminalPane | None = None) -> None:
         pane = pane or self.get_active_terminal()
@@ -2704,7 +2735,8 @@ class HackerTerminal(Gtk.ApplicationWindow):
         return self.split_pane(frame, pane, orientation, working_directory or pane.current_working_directory())
 
     def split_pane(
-        self, frame: Gtk.Frame, pane: TerminalPane, orientation: Gtk.Orientation, directory: Path
+        self, frame: Gtk.Frame, pane: TerminalPane, orientation: Gtk.Orientation, directory: Path,
+        ratio: float = 0.5,
     ) -> TerminalPane:
         """Replace ``pane`` by a split holding it and a new pane."""
         allocation = pane.get_allocation()
@@ -2729,22 +2761,36 @@ class HackerTerminal(Gtk.ApplicationWindow):
         frame.show_all()
         size = allocation.width if orientation == Gtk.Orientation.HORIZONTAL else allocation.height
         if size > 1:
-            split.set_position(size // 2)
+            split.set_position(round(size * ratio))
         else:
-            self.center_when_allocated(split)
+            self.position_when_allocated(split, ratio)
         self.update_pane_highlight(frame)
         new_pane.spawn()
         self.update_broadcast(frame)
         return new_pane
 
     @staticmethod
-    def center_when_allocated(split: Gtk.Paned) -> None:
-        """Split evenly once the paned has a real size (restored layouts)."""
+    def position_when_allocated(split: Gtk.Paned, ratio: float = 0.5) -> None:
+        """Apply the split ratio once the paned has a real size (restored layouts).
+
+        Until then the ratio stays on the paned, so saving a tab that was
+        never shown keeps its sizes instead of forgetting them.
+        """
+        split.pending_ratio = ratio
+
         def on_allocate(widget, allocation) -> None:
-            widget.disconnect(handler[0])
             size = allocation.width if widget.get_orientation() == Gtk.Orientation.HORIZONTAL else allocation.height
+            if size <= 1:
+                return
+            widget.disconnect(handler[0])
+
+            def apply() -> bool:
+                widget.set_position(round(size * ratio))
+                widget.pending_ratio = None
+                return False
+
             # Changing the position inside size-allocate would re-queue a resize.
-            GLib.idle_add(lambda: widget.set_position(size // 2) or False)
+            GLib.idle_add(apply)
 
         handler = [split.connect("size-allocate", on_allocate)]
 
@@ -2761,8 +2807,17 @@ class HackerTerminal(Gtk.ApplicationWindow):
     def layout_of(widget: Gtk.Widget, order: list[TerminalPane]):
         if isinstance(widget, Gtk.Paned):
             kind = "horizontal" if widget.get_orientation() == Gtk.Orientation.HORIZONTAL else "vertical"
-            return [kind, HackerTerminal.layout_of(widget.get_child1(), order),
+            node = [kind, HackerTerminal.layout_of(widget.get_child1(), order),
                     HackerTerminal.layout_of(widget.get_child2(), order)]
+            allocation = widget.get_allocation()
+            size = allocation.width if kind == "horizontal" else allocation.height
+            pending = getattr(widget, "pending_ratio", None)
+            if pending is not None:
+                node.append(pending)
+            elif size > 1:
+                ratio = widget.get_position() / size
+                node.append(round(min(0.95, max(0.05, ratio)), 3))
+            return node
         return order.index(widget)
 
     def close_active_pane(self, force: bool = False) -> bool:
@@ -2847,6 +2902,8 @@ class HackerTerminal(Gtk.ApplicationWindow):
 
     def on_terminal_title_changed(self, pane: TerminalPane, title: str) -> None:
         label = self.tab_labels.get(pane)
+        if pane.custom_name:
+            title = pane.custom_name
         if pane.title_prefix and not title.startswith(pane.title_prefix):
             title = f"{pane.title_prefix} · {title}"
         if label is not None:
@@ -2965,6 +3022,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
                     lambda value=theme.identifier: self.apply_theme(value),
                 )
             )
+        items.append(("Renomear painel…", "Painel", self.rename_pane))
         items.append(("Conexões SSH…", "SSH", self.show_ssh_manager))
         for connection in self.connection_store.load():
             items.append((f"SSH: {connection.name}", "SSH", lambda value=connection: self.connect_ssh(value)))
@@ -3126,7 +3184,8 @@ class HackerTerminal(Gtk.ApplicationWindow):
             if not order:
                 continue
             directories = tuple(pane.current_working_directory() for pane in order)
-            tabs.append(SessionTab(directories, None, self.layout_of(frame.get_child(), order)))
+            names = tuple(pane.custom_name for pane in order)
+            tabs.append(SessionTab(directories, None, self.layout_of(frame.get_child(), order), names))
         if not tabs:
             self.session_store.clear()
             return

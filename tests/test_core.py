@@ -1152,6 +1152,32 @@ class SplitLayoutSessionTests(unittest.TestCase):
             too_many = load_with({"directories": [str(folders[0])] * 9, "layout": 0})
             self.assertLessEqual(len(too_many.directories), 4)
 
+    def test_split_ratios_and_pane_names(self) -> None:
+        import json
+        from hackerterminal.session import clean_name, valid_layout
+
+        self.assertTrue(valid_layout(["horizontal", 0, ["vertical", 1, 2, 0.25], 0.7], 3))
+        for ratio in (0.0, 1.5, True, "0.5", None):
+            self.assertFalse(valid_layout(["horizontal", 0, 1, ratio], 2), ratio)
+        self.assertEqual(clean_name("  web\x1b[31m\n  logs  "), "web [31m logs")
+        self.assertEqual(len(clean_name("x" * 200)), 40)
+        self.assertEqual(clean_name(42), "")
+        with tempfile.TemporaryDirectory() as directory:
+            folders = [Path(directory) / name for name in "abc"]
+            for folder in folders:
+                folder.mkdir()
+            store = SessionStore(Path(directory) / "session.json")
+            tree = ["horizontal", 0, ["vertical", 1, 2, 0.25], 0.7]
+            store.save(SessionState(900, 600, 0, (SessionTab(tuple(folders), None, tree, ("api", "", "logs")),)))
+            loaded = store.load().tabs[0]
+            self.assertEqual((loaded.tree(), loaded.names), (tree, ("api", "", "logs")))
+            payload = json.loads(store.path.read_text())
+            payload["tabs"][0]["names"] = ["a\u0007b", 5]
+            store.path.write_text(json.dumps(payload), encoding="utf-8")
+            self.assertEqual(store.load().tabs[0].names, ("a b", ""))
+            store.save(SessionState(900, 600, 0, (SessionTab((folders[0],)),)))
+            self.assertNotIn("names", json.loads(store.path.read_text())["tabs"][0])
+
     def test_version_two_files_still_load(self) -> None:
         import json
 

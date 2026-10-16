@@ -187,6 +187,10 @@ def main() -> int:
             origin = window.get_active_terminal()
             pages_before = window.notebook.get_n_pages()
 
+            def shape(node):
+                """A layout without its split ratios."""
+                return [node[0], shape(node[1]), shape(node[2])] if isinstance(node, list) else node
+
             def wait_for(condition, seconds: float = 5.0) -> bool:
                 deadline = time.monotonic() + seconds
                 while not condition() and time.monotonic() < deadline:
@@ -258,7 +262,7 @@ def main() -> int:
             order = window.leaves(grid_frame.get_child())
             if order != [top_left, bottom_left, top_right, bottom_right]:
                 raise AssertionError("2x2 grid panes are not in visual order")
-            if window.layout_of(grid_frame.get_child(), order) != ["horizontal", ["vertical", 0, 1], ["vertical", 2, 3]]:
+            if shape(window.layout_of(grid_frame.get_child(), order)) != ["horizontal", ["vertical", 0, 1], ["vertical", 2, 3]]:
                 raise AssertionError("2x2 grid layout is wrong")
             if any(pane.get_allocated_width() < 100 or pane.get_allocated_height() < 60 for pane in order):
                 raise AssertionError("grid panes were not given usable space")
@@ -299,11 +303,11 @@ def main() -> int:
             preferences.restore_session = True
             window.save_session()
             saved_grid = session_store.load()
-            if saved_grid is None or not any(tab.tree() == ["horizontal", ["vertical", 0, 1], ["vertical", 2, 3]] for tab in saved_grid.tabs):
+            if saved_grid is None or not any(shape(tab.tree()) == ["horizontal", ["vertical", 0, 1], ["vertical", 2, 3]] for tab in saved_grid.tabs):
                 raise AssertionError("the grid layout was not saved")
             window.on_pane_focus(bottom_left)
             window.close_active_pane(force=True)
-            if window.layout_of(grid_frame.get_child(), window.leaves(grid_frame.get_child())) != ["horizontal", 0, ["vertical", 1, 2]]:
+            if shape(window.layout_of(grid_frame.get_child(), window.leaves(grid_frame.get_child()))) != ["horizontal", 0, ["vertical", 1, 2]]:
                 raise AssertionError("closing a grid pane did not collapse its split")
             if window.get_active_terminal() is not top_left:
                 raise AssertionError("focus did not move to the collapsed neighbour")
@@ -313,10 +317,47 @@ def main() -> int:
             restored_frames = [window.notebook.get_nth_page(index) for index in range(replay_frame_count, window.notebook.get_n_pages())]
             if not any(
                 isinstance(frame, Gtk.Frame)
-                and window.layout_of(frame.get_child(), window.leaves(frame.get_child())) == ["horizontal", ["vertical", 0, 1], ["vertical", 2, 3]]
+                and shape(window.layout_of(frame.get_child(), window.leaves(frame.get_child()))) == ["horizontal", ["vertical", 0, 1], ["vertical", 2, 3]]
                 for frame in restored_frames
             ):
                 raise AssertionError("restoring the session did not rebuild the grid")
+            # Split sizes and pane names survive a save and restore.
+            sized_frame = restored_frames[-1]
+            window.notebook.set_current_page(window.notebook.page_num(sized_frame))
+            wait_for(lambda: False, 0.8)
+            outer = sized_frame.get_child()
+            outer.set_position(int(outer.get_allocated_width() * 0.3))
+            inner = outer.get_child2()
+            inner.set_position(int(inner.get_allocated_height() * 0.7))
+            sized_leaves = window.leaves(outer)
+            sized_leaves[0].set_custom_name("api")
+            sized_leaves[3].set_custom_name("logs\x1b")
+            if not sized_leaves[0].name_bar.get_visible() or sized_leaves[1].name_bar.get_visible():
+                raise AssertionError("the pane name bar did not follow the name")
+            if "api" not in window.tab_labels[sized_leaves[0]].get_text() and window.get_active_terminal() is sized_leaves[0]:
+                raise AssertionError("the tab did not show the pane name")
+            wait_for(lambda: False, 0.3)
+            window.save_session()
+            sized_tab = session_store.load().tabs[-1]
+            if sized_tab.names != ("api", "", "", "logs"):
+                raise AssertionError(f"pane names were not saved: {sized_tab.names}")
+            if abs(sized_tab.tree()[3] - 0.3) > 0.03 or abs(sized_tab.tree()[2][3] - 0.7) > 0.03:
+                raise AssertionError(f"split ratios were not saved: {sized_tab.tree()}")
+            before = window.notebook.get_n_pages()
+            window.saved_session = SessionState(1000, 700, 0, (sized_tab,))
+            window.restore_session()
+            replayed = window.notebook.get_nth_page(before)
+            hidden_tree = window.layout_of(replayed.get_child(), window.leaves(replayed.get_child()))
+            if hidden_tree[3] != sized_tab.tree()[3]:
+                raise AssertionError(f"a tab never shown lost its split sizes: {hidden_tree}")
+            window.notebook.set_current_page(before)
+            wait_for(lambda: False, 0.8)
+            replayed_tree = window.layout_of(replayed.get_child(), window.leaves(replayed.get_child()))
+            if abs(replayed_tree[3] - 0.3) > 0.03 or abs(replayed_tree[2][3] - 0.7) > 0.03:
+                raise AssertionError(f"split ratios were not restored: {replayed_tree}")
+            if [leaf.custom_name for leaf in window.leaves(replayed.get_child())] != ["api", "", "", "logs"]:
+                raise AssertionError("pane names were not restored")
+            restored_frames.append(replayed)
             for frame in restored_frames + [grid_frame]:
                 if isinstance(frame, Gtk.Frame):
                     window.close_page(frame, force=True)

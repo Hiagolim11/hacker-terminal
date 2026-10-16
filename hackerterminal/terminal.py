@@ -21,6 +21,7 @@ from .effects import EffectsLayer
 from .keysound import KeySoundEngine
 from .fonts import FontChoice, choose_font
 from .runtime import Atk, Gdk, Gio, GLib, Gtk, Pango, Vte
+from .session import clean_name
 from .themes import Theme
 
 LOGGER = logging.getLogger(__name__)
@@ -448,6 +449,7 @@ class TerminalPane(Gtk.Box):
         self.mirroring = False
         self.banner_shown = False
         self.theme_override: Theme | None = None
+        self.custom_name = ""
         self.title_prefix = ""
         self.pending_input = ""
         self.last_mark_sequence = -1
@@ -519,6 +521,12 @@ class TerminalPane(Gtk.Box):
         # Effects are painted on the terminal itself; an overlay window would
         # intercept touchpad scrolling on X11.
         self.effects = EffectsLayer(self.terminal)
+        # Shown only for named panes, so splits are easy to tell apart.
+        self.name_bar = Gtk.Label(xalign=0)
+        self.name_bar.set_ellipsize(Pango.EllipsizeMode.END)
+        self.name_bar.get_style_context().add_class("pane-name")
+        self.name_bar.set_no_show_all(True)
+        self.pack_start(self.name_bar, False, False, 0)
         self.pack_start(self.scroller, True, True, 0)
         self.search_bar = SearchBar(self.terminal)
         self.pack_start(self.search_bar, False, False, 0)
@@ -1026,6 +1034,7 @@ class TerminalPane(Gtk.Box):
             label = "Parar de digitar em todos os painéis" if self.broadcast_peers else "Digitar em todos os painéis da aba"
             actions.append((label, lambda *_: self.on_output_action(self, "broadcast")))
         if self.on_output_action is not None:
+            actions.append(("Renomear painel…", lambda *_: self.on_output_action(self, "rename")))
             actions.append(("Salvar saída…", lambda *_: self.on_output_action(self, "save")))
             recording = "Parar gravação" if self.recorder is not None else "Gravar saída…"
             actions.append((recording, lambda *_: self.on_output_action(self, "record")))
@@ -1068,6 +1077,12 @@ class TerminalPane(Gtk.Box):
             Gio.AppInfo.launch_default_for_uri(uri, None)
         except GLib.Error as error:
             LOGGER.warning("não foi possível abrir %s: %s", uri, error)
+
+    def set_custom_name(self, name: str) -> None:
+        self.custom_name = clean_name(name)
+        self.name_bar.set_text(self.custom_name)
+        self.name_bar.set_visible(bool(self.custom_name))
+        self.on_title_changed_callback(self, self.title or "Terminal")
 
     def on_window_title_changed(self, _terminal, _property) -> None:
         self.title = self.terminal.get_window_title() or ""
