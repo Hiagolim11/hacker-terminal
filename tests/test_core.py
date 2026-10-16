@@ -268,7 +268,7 @@ class ThemeTests(unittest.TestCase):
     def test_builtin_themes_are_valid_and_complete(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             manager = ThemeManager(Path(directory))
-            self.assertEqual(len(manager.all()), 14)  # 5 classic + 8 phosphor + red alert
+            self.assertEqual(len(manager.all()), 16)  # 5 classic + 8 phosphor + red alert, light, high contrast
             self.assertFalse(manager.errors)
             for theme in manager.all():
                 self.assertEqual(len(theme.ansi), 16)
@@ -1377,3 +1377,37 @@ class DropdownTests(unittest.TestCase):
         from hackerterminal.dropdown import launch_command
 
         self.assertTrue(launch_command().endswith("--dropdown"))
+
+
+class AccessibleThemeTests(unittest.TestCase):
+    def test_contrast_helpers(self) -> None:
+        from hackerterminal.themes import contrast_ratio, luminance
+
+        self.assertAlmostEqual(contrast_ratio("#000000", "#ffffff"), 21.0, places=2)
+        self.assertAlmostEqual(contrast_ratio("#777777", "#777777"), 1.0)
+        self.assertLess(luminance("#111315"), luminance("#f6f4ef"))
+
+    def test_light_theme_is_readable_and_light(self) -> None:
+        from hackerterminal.themes import contrast_ratio
+
+        theme = ThemeManager().get("paper-light")
+        self.assertFalse(theme.dark)
+        self.assertFalse(theme.rain)
+        background = theme.terminal_background
+        self.assertGreaterEqual(contrast_ratio(theme.terminal_foreground, background), 7)
+        for index, color in enumerate(theme.ansi[1:], start=1):
+            self.assertGreaterEqual(contrast_ratio(color, background), 4.5, f"ANSI {index}: {color}")
+        self.assertGreaterEqual(contrast_ratio(theme.muted, theme.surface), 4.5)
+        self.assertGreaterEqual(contrast_ratio(theme.accent, theme.background), 4.5)
+
+    def test_high_contrast_theme_meets_aaa(self) -> None:
+        from hackerterminal.themes import contrast_ratio
+
+        theme = ThemeManager().get("high-contrast")
+        self.assertTrue(theme.dark and theme.high_contrast)
+        for index, color in enumerate(theme.ansi[1:], start=1):
+            self.assertGreaterEqual(contrast_ratio(color, theme.terminal_background), 7, f"ANSI {index}: {color}")
+        self.assertGreaterEqual(contrast_ratio(theme.selection_foreground, theme.selection_background), 7)
+        self.assertIn(b".pane-inactive { opacity: 1.0; }", theme.css())
+        self.assertIn(b".pane-inactive { opacity: 0.62; }", ThemeManager().get("minimal-dark").css())
+        self.assertFalse(any(other.high_contrast for other in ThemeManager().all() if other.identifier != theme.identifier))

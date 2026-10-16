@@ -59,6 +59,16 @@ class Theme:
     font: str | None = None  # suggested font family
 
     @property
+    def dark(self) -> bool:
+        """Dark themes ask GTK for its dark variant (menus, dialogs, scrollbars)."""
+        return luminance(self.background) < 0.35
+
+    @property
+    def high_contrast(self) -> bool:
+        """Never dim text in themes made for maximum legibility."""
+        return contrast_ratio(self.terminal_foreground, self.terminal_background) >= 18
+
+    @property
     def animated(self) -> bool:
         return self.rain or self.noise > 0 or self.flicker > 0
 
@@ -141,7 +151,7 @@ headerbar button.titlebutton:hover {{ color: {self.foreground}; background-color
 }}
 .terminal-frame paned.horizontal > .terminal-pane {{ margin: 0 6px; }}
 .terminal-frame paned.vertical > .terminal-pane {{ margin: 4px 0; }}
-.pane-inactive {{ opacity: 0.62; }}
+.pane-inactive {{ opacity: {1.0 if self.high_contrast else 0.62}; }}
 vte-terminal {{ background-color: transparent; color: {self.terminal_foreground}; padding: {self.tube_padding}px; }}
 
 notebook {{ background-color: transparent; }}
@@ -384,6 +394,21 @@ class ThemeManager:
         if theme.path is None:
             raise ThemeError("tema sem arquivo de origem")
         _atomic_copy(theme.path, destination)
+
+
+def luminance(color: str) -> float:
+    """WCAG relative luminance of a ``#rrggbb`` color."""
+    channels = []
+    for index in (1, 3, 5):
+        value = int(color[index:index + 2], 16) / 255
+        channels.append(value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4)
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+
+def contrast_ratio(first: str, second: str) -> float:
+    """WCAG contrast ratio, from 1 (same color) to 21 (black on white)."""
+    lighter, darker = sorted((luminance(first), luminance(second)), reverse=True)
+    return (lighter + 0.05) / (darker + 0.05)
 
 
 def _rgba(color: str, alpha: float) -> str:

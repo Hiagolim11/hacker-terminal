@@ -163,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
     Gtk.Window.set_default_icon_name(APP_NAME)
     settings = Gtk.Settings.get_default()
     if settings is not None:
-        settings.set_property("gtk-application-prefer-dark-theme", True)
+        settings.set_property("gtk-application-prefer-dark-theme", themes.get(preferences.theme).dark)
     screen = Gdk.Screen.get_default()
     if screen is not None:
         # One above APPLICATION: VTE installs its own padding at that priority on

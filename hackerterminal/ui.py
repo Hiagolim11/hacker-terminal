@@ -2024,6 +2024,9 @@ class HackerTerminal(Gtk.ApplicationWindow):
     def load_theme_css(self) -> None:
         opacity = self.preferences.opacity / 100 if self.translucent else 1.0
         self.css_provider.load_from_data(self.active_theme.css(opacity))
+        settings = Gtk.Settings.get_default()
+        if settings is not None:
+            settings.set_property("gtk-application-prefer-dark-theme", self.active_theme.dark)
 
     def autosave_session(self) -> bool:
         """Persist the layout periodically so a crash or kill does not lose it."""
