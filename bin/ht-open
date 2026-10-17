@@ -2,6 +2,7 @@
 """Show images and spreadsheets in the Hacker Terminal viewer.
 
 Usage: ht-open ARQUIVO [ARQUIVO ...]
+       ht-open --inline [--width COLUNAS] IMAGEM [IMAGEM ...]
 """
 
 import json
@@ -10,9 +11,13 @@ import socket
 import sys
 
 USAGE = """uso: ht-open ARQUIVO [ARQUIVO ...]
+     ht-open --inline [--width COLUNAS] IMAGEM [IMAGEM ...]
 
 Abre imagens (PNG, JPG, GIF, WebP, SVG...) e planilhas (CSV, TSV, XLSX, ODS)
-numa aba de visualização do Hacker Terminal."""
+numa aba de visualização do Hacker Terminal.
+
+  -i, --inline      desenha a imagem na própria saída do terminal
+  -w, --width N     largura máxima em colunas (padrão: a largura do terminal)"""
 
 
 def send(socket_path: str, request: dict) -> dict:
@@ -29,10 +34,48 @@ def send(socket_path: str, request: dict) -> dict:
     return json.loads(data.decode() or "{}")
 
 
+def show_inline(names: list[str], columns: int | None) -> int:
+    """Draw images in the output; works without the viewer and over pipes."""
+    import shutil
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from hackerterminal.inline_image import render_file
+
+    size = shutil.get_terminal_size((80, 24))
+    width = min(columns or size.columns, size.columns)
+    status = 0
+    for name in names:
+        path = os.path.expanduser(name)
+        try:
+            sys.stdout.write(render_file(path, width, max(4, size.lines - 2)))
+            sys.stdout.flush()
+        except Exception as error:  # GLib.Error: unknown format, broken file...
+            print(f"ht-open: não foi possível desenhar {name}: {getattr(error, 'message', error)}", file=sys.stderr)
+            status = 1
+    return status
+
+
 def main(argv: list[str]) -> int:
     if not argv or argv[0] in ("-h", "--help"):
         print(USAGE)
         return 0 if argv else 2
+    if argv[0] in ("-i", "--inline"):
+        names, columns = [], None
+        arguments = iter(argv[1:])
+        for argument in arguments:
+            if argument in ("-w", "--width"):
+                try:
+                    columns = max(4, int(next(arguments)))
+                except (StopIteration, ValueError):
+                    print("ht-open: --width precisa de um número de colunas", file=sys.stderr)
+                    return 2
+            else:
+                names.append(argument)
+        if not names:
+            print(USAGE)
+            return 2
+        return show_inline(names, columns)
     socket_path = os.environ.get("HACKER_TERMINAL_SOCKET")
     if not socket_path:
         print("ht-open: use este comando dentro do Hacker Terminal.", file=sys.stderr)

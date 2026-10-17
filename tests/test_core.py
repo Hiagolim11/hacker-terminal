@@ -1508,3 +1508,38 @@ class LazyStartupTests(unittest.TestCase):
         result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True,
                                 cwd=Path(__file__).resolve().parent.parent)
         self.assertEqual(result.stdout.strip(), "False")
+
+
+class InlineImageTests(unittest.TestCase):
+    def test_fit_keeps_aspect_and_whole_cells(self) -> None:
+        from hackerterminal.inline_image import fit
+
+        self.assertEqual(fit(400, 200, 80, 24), (80, 40))       # limited by width
+        self.assertEqual(fit(100, 400, 80, 10), (5, 20))        # limited by height (2 px per row)
+        self.assertEqual(fit(10, 7, 80, 24), (10, 8))           # never enlarged; even height
+        self.assertEqual(fit(3000, 1, 5, 5), (5, 2))
+
+    def test_half_blocks_and_transparency(self) -> None:
+        from hackerterminal.inline_image import render
+
+        red, blue, clear = (255, 0, 0, 255), (0, 0, 255, 255), (0, 0, 0, 0)
+        image = {(0, 0): red, (0, 1): blue, (1, 0): red, (1, 1): clear, (2, 0): clear, (2, 1): clear}
+        text = render(3, 2, lambda x, y: image[(x, y)])
+        self.assertEqual(
+            text,
+            "\x1b[48;2;0;0;255;38;2;255;0;0m▀"   # red over blue
+            "\x1b[49m▀"                            # red over the terminal's background
+            " "                                   # fully transparent
+            "\x1b[0m\n",
+        )
+
+    def test_real_image_file(self) -> None:
+        from hackerterminal.inline_image import render_file
+
+        text = render_file(str(Path(__file__).parent / "fixtures" / "gradiente.png"), 20, 10)
+        lines = text.splitlines()
+        self.assertTrue(1 <= len(lines) <= 10)
+        self.assertTrue(all(line.count("▀") + line.count("▄") + line.count(" ") <= 20 for line in lines))
+        self.assertIn("\x1b[38;2;", text)
+        with self.assertRaises(Exception):
+            render_file(str(Path(__file__).parent / "fixtures" / "vendas.xlsx"), 20, 10)

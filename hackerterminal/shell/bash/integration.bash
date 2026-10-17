@@ -19,7 +19,7 @@ unset __ht_file __ht_profile
 
 if [ -z "${__HT_INTEGRATION-}" ]; then
   __HT_INTEGRATION=1
-  __ht_seq=0 __ht_cmd="" __ht_start="" __ht_status="" __ht_armed=""
+  __ht_seq=0 __ht_cmd="" __ht_start="" __ht_status="" __ht_armed="" __ht_mark=""
 
   __ht_install() {
     # Startup files may replace PROMPT_COMMAND later (Kali's .bashrc runs
@@ -96,8 +96,20 @@ if [ -z "${__HT_INTEGRATION-}" ]; then
     # Current directory (OSC 7), also where the distro's vte.sh is missing.
     __ht_urlencode "$PWD"
     printf '\e]7;file://%s%s\e\\' "${HOSTNAME-}" "$REPLY"
-    printf '\e]666;vte.ext.hackerterminal.mark=1|%s|%s|%s|%s|%s\e\\' \
+    printf -v __ht_mark '\e]666;vte.ext.hackerterminal.mark=1|%s|%s|%s|%s|%s\e\\' \
       "$__ht_seq" "$__ht_status" "$duration" "$(( ${#lines} + 1 ))" "$command"
+    # The mark goes out at the very end of the prompt, so the terminal reads
+    # the cursor where the prompt ends. Printed here, before the prompt, it
+    # could arrive in an earlier batch and land a line too high. Re-added
+    # each time in case PROMPT_COMMAND or a theme rewrote PS1.
+    if shopt -q promptvars; then
+      case "$PS1" in
+        *'$__ht_mark'*) ;;
+        *) PS1+='\[$__ht_mark\]' ;;
+      esac
+    else
+      printf '%s' "$__ht_mark"
+    fi
     __ht_cmd="" __ht_start=""
     __ht_armed=1
   }

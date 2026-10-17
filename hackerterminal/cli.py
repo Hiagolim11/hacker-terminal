@@ -85,6 +85,9 @@ def diagnose(
     from .terminal import HAS_TERMPROPS
     integration = "disponível (zsh e bash)" if HAS_TERMPROPS else "indisponível (requer VTE 0.78 ou mais novo)"
     print(f"Integração com o shell: {integration}")
+    from .terminal import HAS_SIXEL
+    sixel = "disponível" if HAS_SIXEL else "indisponível neste VTE (use ht-open --inline para ver imagens)"
+    print(f"Imagens sixel: {sixel}")
     shortcuts = ShortcutMap(preferences.shortcuts)
     for error in themes.errors:
         print(f"Aviso de tema: {error}", file=sys.stderr)
