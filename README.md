@@ -930,7 +930,7 @@ O projeto **não usa dependências do PyPI**: PyGObject, GTK, VTE e GStreamer v�
 O GitHub publica a release sozinho quando recebe uma tag `vX.Y.Z`:
 
 1. Atualize a versão em `hackerterminal/constants.py`, `tests/smoke.sh`, no metainfo (`packaging/*.metainfo.xml`) e a seção `## X.Y.Z` do `CHANGELOG.md`.
-2. Regere o site: `python3 packaging/build_site.py`.
+2. Regere o site: `python3 packaging/build_site.py`. Ele também gera a demonstração interativa (`docs/demo.js`, `docs/demo.css` e os sons em `docs/audio/keys/`) a partir dos temas, perfis, ações e pacotes de som do próprio app, editados em `packaging/site/`.
 3. Faça o commit e envie a tag anotada — a primeira linha da mensagem vira o título da release:
 
    ```bash

@@ -50,8 +50,8 @@ jobs:
             exit 1
           fi
           python3 packaging/build_site.py
-          if [ -n "$(git status --porcelain -- docs/index.html)" ]; then  # changed or never committed
-            echo "::error::docs/index.html está desatualizado: rode python3 packaging/build_site.py e faça o commit"
+          if [ -n "$(git status --porcelain -- docs/)" ]; then  # changed or never committed
+            echo "::error::O site em docs/ está desatualizado: rode python3 packaging/build_site.py e faça o commit"
             exit 1
           fi
           echo "VERSION=$version" >> "$GITHUB_ENV"

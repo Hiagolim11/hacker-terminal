@@ -13,7 +13,8 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23111'/%3E%3Cpath d='M9 11l6 5-6 5' fill='none' stroke='%23fff' stroke-width='3'/%3E%3Cpath d='M17 22h7' stroke='%23fff' stroke-width='3'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&family=Newsreader:opsz,wght@6..72,400..600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&family=Newsreader:opsz,wght@6..72,400..600&family=JetBrains+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;600&family=VT323&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="demo.css">
 <style>
 /* Layout: one calm column (max 1080px) of document-like sections; the product shot and a
    bento of six capabilities carry the page; colour only where it means something. */
@@ -222,6 +223,7 @@ footer { padding-block: clamp(72px, 11vw, 128px) 40px; }
       Hacker Terminal
     </a>
     <nav class="nav-links" aria-label="Principal">
+      <a href="#experimente">Experimente</a>
       <a href="#recursos">Recursos</a>
       <a href="#temas">Temas</a>
       <a href="#instalar">Instalar</a>
@@ -248,6 +250,30 @@ footer { padding-block: clamp(72px, 11vw, 128px) 40px; }
       <img src="screenshots/hero.png" width="1280" height="760" alt="Janela do Hacker Terminal com o terminal ocupando a janela inteira, prompt colorido e barra de status discreta">
     </div>
   </div>
+
+  <section id="experimente" aria-labelledby="experimente-title">
+    <div class="container">
+      <div class="section-head reveal">
+        <h2 id="experimente-title">Experimente sem instalar.</h2>
+        <p class="muted">Um shell de demonstração com os mesmos temas, perfis, efeitos, ações rápidas e sons de teclado do app. Clique nele e digite <code>help</code>, troque o tema na paleta de comandos (<kbd>Ctrl+Shift+P</kbd> ou o botão de busca) ou mude tudo nas preferências, pela engrenagem.</p>
+      </div>
+      <div class="ht-demo reveal" id="demo" data-version="__VERSION__">
+        <noscript><img src="screenshots/hero.png" width="1280" height="760" alt="Janela do Hacker Terminal no tema Zero Day"></noscript>
+      </div>
+      <div class="demo-try reveal" id="demo-try" aria-label="Comandos para experimentar">
+        <span class="muted">Experimente:</span>
+        <button type="button" data-run="neofetch">neofetch</button>
+        <button type="button" data-run="tema phosphor-amber">tema phosphor-amber</button>
+        <button type="button" data-run="perfil retro">perfil retro</button>
+        <button type="button" data-run="cores">cores</button>
+        <button type="button" data-run="git log --oneline">git log</button>
+        <button type="button" data-run="ls nao-existe">um comando que falha</button>
+        <button type="button" data-run="ht-open --inline docs/screenshots/grid.png">ht-open --inline</button>
+        <button type="button" data-run="cat ~/.config/hacker-terminal/config.ini">config.ini</button>
+      </div>
+      <p class="demo-note muted">É uma simulação no navegador: nada roda no seu computador. O app de verdade abre o seu próprio shell, com <code>vim</code>, <code>tmux</code> e tudo o mais.</p>
+    </div>
+  </section>
 
   <section id="recursos" aria-labelledby="recursos-title">
     <div class="container">
@@ -444,5 +470,7 @@ footer { padding-block: clamp(72px, 11vw, 128px) 40px; }
   }
 })();
 </script>
+<script type="application/json" id="demo-data">__DEMO_DATA__</script>
+<script src="demo.js" defer></script>
 </body>
 </html>
