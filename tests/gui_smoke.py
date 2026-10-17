@@ -25,6 +25,7 @@ from hackerterminal.dialogs.actions import ActionEditorDialog, FieldsDialog
 from hackerterminal.dialogs.editors import ProfileEditorDialog, ThemeEditorDialog
 from hackerterminal.dialogs.palette import CommandPaletteDialog
 from hackerterminal.dialogs.preferences import PreferencesDialog
+from hackerterminal.dialogs.result import ResultWindow
 from hackerterminal.window.main import HackerTerminal
 
 
@@ -797,6 +798,49 @@ def main() -> int:
                 raise AssertionError("saved split orientation was not restored")
             if window.action_panel is None or len(window.action_panel.action_buttons) != len(DEFAULT_ACTIONS):
                 raise AssertionError("sidebar actions are missing")
+
+            # A quick action shows only its result in a small window; the pane gets nothing typed.
+            def result_windows() -> list[ResultWindow]:
+                return [w for w in Gtk.Window.list_toplevels() if isinstance(w, ResultWindow) and w.get_visible()]
+
+            def wait_result(seconds: float = 5) -> ResultWindow:
+                deadline = time.monotonic() + seconds
+                while not (result_windows() and result_windows()[0].finished) and time.monotonic() < deadline:
+                    Gtk.main_iteration_do(False)
+                if not result_windows() or not result_windows()[0].finished:
+                    raise AssertionError("quick action result window did not finish")
+                return result_windows()[0]
+
+            def result_text(result: ResultWindow) -> str:
+                return result.buffer.get_text(*result.buffer.get_bounds(), False)
+
+            active_pane = window.get_active_terminal()
+            screen_before = active_pane.terminal.get_text_format(Vte.Format.TEXT) or ""
+            window.action_panel.run_action(QuickAction("probe", "Teste", "printf 'RES\\033[1mULT\\033[0m%s' $((40+2)); pwd"))
+            result = wait_result()
+            if result_text(result) != f"RESULT42{active_pane.current_working_directory()}\n" or result.exit_status != 0:
+                raise AssertionError(f"quick action result is wrong: {result_text(result)!r}")
+            if "✓" not in result.status.get_text():
+                raise AssertionError("quick action did not report success")
+            result.destroy()
+            window.action_panel.run_action(QuickAction("fails", "Falha", "echo nada >&2; exit 3"))
+            result = wait_result()
+            if result.exit_status != 3 or "nada" not in result_text(result) or "Saída 3" not in result.status.get_text():
+                raise AssertionError("failing quick action was not reported")
+            result.destroy()
+            window.action_panel.run_action(QuickAction("long", "Longo", "while :; do echo tick; sleep 0.2; done | cat"))
+            deadline = time.monotonic() + 0.6
+            while time.monotonic() < deadline:
+                Gtk.main_iteration_do(False)
+            result = result_windows()[0]
+            started = time.monotonic()
+            result.stop()
+            result = wait_result(3)
+            if "Parado" not in result.status.get_text() or time.monotonic() - started > 2:
+                raise AssertionError("Parar did not stop a running pipeline")
+            result.destroy()
+            if (active_pane.terminal.get_text_format(Vte.Format.TEXT) or "") != screen_before:
+                raise AssertionError("a quick action typed into the terminal")
             if not all(button.get_visible() for button in window.action_panel.action_buttons):
                 raise AssertionError("sidebar actions are not visible")
             # Opened from hidden (the default), the panel must show its actions on screen,

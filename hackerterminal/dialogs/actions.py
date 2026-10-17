@@ -78,11 +78,15 @@ class ActionFormDialog(Gtk.Dialog):
         self.command_entry = Gtk.Entry(text=action.command if action else "")
         self.confirm = Gtk.CheckButton(label="Pedir confirmação antes de executar")
         self.confirm.set_active(action.confirm if action else False)
+        self.in_terminal = Gtk.CheckButton(label="Rodar no terminal em vez de mostrar só o resultado")
+        self.in_terminal.set_tooltip_text("Para comandos que pedem senha, leem o teclado ou controlam a tela (sudo, vim, htop, clear)")
+        self.in_terminal.set_active(action.in_terminal if action else False)
         grid.attach(Gtk.Label(label="Nome", xalign=0), 0, 0, 1, 1)
         grid.attach(self.label_entry, 1, 0, 1, 1)
         grid.attach(Gtk.Label(label="Comando", xalign=0), 0, 1, 1, 1)
         grid.attach(self.command_entry, 1, 1, 1, 1)
         grid.attach(self.confirm, 1, 2, 1, 1)
+        grid.attach(self.in_terminal, 1, 3, 1, 1)
         self.label_entry.set_hexpand(True)
         self.command_entry.set_placeholder_text("ex.: nmap -sV {alvo}")
         hint = Gtk.Label(
@@ -93,7 +97,7 @@ class ActionFormDialog(Gtk.Dialog):
         hint.set_line_wrap(True)
         hint.set_max_width_chars(60)
         hint.get_style_context().add_class("panel-hint")
-        grid.attach(hint, 1, 3, 1, 1)
+        grid.attach(hint, 1, 4, 1, 1)
         self.set_default_size(520, -1)
         self.show_all()
 
@@ -103,7 +107,7 @@ class ActionFormDialog(Gtk.Dialog):
         if not label or not command:
             return None
         identifier = self.action.identifier if self.action else f"custom-{uuid.uuid4().hex[:10]}"
-        return QuickAction(identifier, label, command, self.confirm.get_active())
+        return QuickAction(identifier, label, command, self.confirm.get_active(), self.in_terminal.get_active())
 
 
 class ActionEditorDialog(Gtk.Dialog):

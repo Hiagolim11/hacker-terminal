@@ -544,6 +544,8 @@ Identificadores disponíveis: `new_tab`, `close_pane`, `split_horizontal`, `spli
 
 O painel lateral (`Ctrl+Shift+B` ou o botão ☰ no cabeçalho) traz comandos de diagnóstico local (identidade, interfaces de rede, portas, rotas, processos, SSH, saúde do sistema). Em **Editar ações…** você adiciona, edita, remove e reordena — por exemplo `make test`, `docker ps` ou `git status` — e pode exigir **confirmação** antes de ações sensíveis (marcadas com ●). Todas as ações também aparecem na paleta de comandos.
 
+Ao clicar numa ação, **só o resultado aparece**, numa janela pequena nas cores do tema: a saída chega enquanto o comando roda, e no fim aparece ✓ ou ✗ com o código de saída e o tempo. O comando roda na pasta do painel ativo e nada é digitado no terminal. Na janela, **Parar** encerra o comando (com tudo o que ele abriu), **Copiar** copia a saída e **Rodar no terminal** digita o comando no painel, como antes. Ações que precisam de um terminal de verdade, porque pedem senha, leem o teclado ou controlam a tela (`sudo`, `vim`, `htop`, `clear`…), usam a opção **Rodar no terminal** do editor de ações; ela já vem marcada para essas ações e para *Limpar terminal*.
+
 Uma ação pode ter **campos**: escreva `nmap -sV {alvo}` ou `ping -c {vezes=4} {host}` (`=` define um valor padrão e torna o campo opcional). Ao executar, um formulário pede os valores e mostra o comando final; os últimos valores digitados são lembrados durante a sessão. Os valores entram protegidos por aspas, então `10.0.0.5; rm -rf ~` vira um único argumento e nunca é executado. Texto entre aspas simples (`awk '{print $1}'`) e `${VAR}` não são tratados como campos. Ações com campos aparecem com “…” no painel.
 
 ---

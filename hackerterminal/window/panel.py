@@ -124,7 +124,19 @@ class ActionPanel(Gtk.Box):
             dialog.destroy()
             if response != Gtk.ResponseType.OK:
                 return
-        self.run_command(command)
+        terminal = self.get_terminal()
+        if action.in_terminal or terminal is None:
+            self.run_command(command)
+            return
+        from ..dialogs.result import ResultWindow
+
+        ResultWindow(
+            parent if isinstance(parent, Gtk.Window) else None,
+            action.label,
+            command,
+            terminal.current_working_directory(),
+            self.run_command,
+        )
 
     def set_compact(self, compact: bool) -> None:
         if compact == self.compact:

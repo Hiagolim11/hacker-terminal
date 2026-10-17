@@ -87,12 +87,27 @@ def fill(command: str, values: dict[str, str]) -> str:
     return "".join(pieces)
 
 
+# Programs that need a real terminal (screen control, a password prompt or
+# keyboard input): actions starting with them run in the pane by default.
+TERMINAL_PROGRAMS = frozenset({
+    "clear", "reset", "sudo", "su", "ssh", "telnet", "vi", "vim", "nvim", "nano", "emacs", "less", "more",
+    "man", "top", "htop", "btop", "watch", "tmux", "screen", "mc", "python", "python3", "ipython", "msfconsole",
+})
+
+
+def needs_terminal(command: str) -> bool:
+    words = command.split()
+    return bool(words) and words[0] in TERMINAL_PROGRAMS
+
+
 @dataclass(frozen=True)
 class QuickAction:
     identifier: str
     label: str
     command: str
     confirm: bool = False
+    # False: the output opens in a small result window; True: typed into the pane.
+    in_terminal: bool = False
 
 
 DEFAULT_ACTIONS = (
@@ -105,7 +120,7 @@ DEFAULT_ACTIONS = (
     QuickAction("services", "Serviços de um alvo", "nmap -sV {alvo}"),
     QuickAction("ssh", "Conexões SSH", "printf 'SSH config:\\n'; ls -la ~/.ssh 2>/dev/null || echo 'Nenhuma configuracao SSH'"),
     QuickAction("health", "Saúde do sistema", "printf 'DISCO\\n'; df -h /; printf '\\nMEMORIA\\n'; free -h; printf '\\nUPTIME\\n'; uptime"),
-    QuickAction("clear", "Limpar terminal", "clear"),
+    QuickAction("clear", "Limpar terminal", "clear", in_terminal=True),
 )
 
 
@@ -131,7 +146,8 @@ class ActionStore:
                     raise ValueError(f"ação inválida: {section_name}")
                 order = section.getint("order", fallback=len(ordered))
                 confirm = section.getboolean("confirm", fallback=False)
-                ordered.append((order, QuickAction(identifier, label, command, confirm)))
+                in_terminal = section.getboolean("in_terminal", fallback=needs_terminal(command))
+                ordered.append((order, QuickAction(identifier, label, command, confirm, in_terminal)))
             return [action for _order, action in sorted(ordered, key=lambda item: item[0])]
         except (OSError, configparser.Error, ValueError):
             return list(DEFAULT_ACTIONS)
@@ -153,6 +169,7 @@ class ActionStore:
                 "label": action.label.strip(),
                 "command": action.command.strip(),
                 "confirm": str(action.confirm).lower(),
+                "in_terminal": str(action.in_terminal).lower(),
             }
         temporary: Path | None = None
         try:

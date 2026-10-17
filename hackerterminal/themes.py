@@ -229,6 +229,11 @@ scrollbar slider:active {{ background-color: {self.accent}; }}
 .panel-inner {{ padding: 16px 10px 12px 10px; }}
 .panel-title {{ color: {self.muted}; font-weight: 600; font-size: 12px; }}
 .panel-hint {{ color: {self.muted}; font-size: 11px; }}
+.result-output, .result-output text {{ background-color: {self.terminal_background}; color: {self.terminal_foreground}; }}
+.result-bar {{ background-color: {self.terminal_background}; border-top: 1px solid {hairline}; padding: 8px 12px; }}
+.result-status {{ color: {self.muted}; font-size: 12px; }}
+.result-status.result-ok {{ color: {self.accent}; }}
+.result-status.result-failed {{ color: {self.danger}; }}
 .action-button {{
   color: {self.foreground}; background-image: none; background-color: transparent;
   border: 0; border-radius: 6px; padding: 7px 10px;

@@ -15,7 +15,7 @@ import wave
 from pathlib import Path
 from unittest.mock import patch
 
-from hackerterminal.actions import ActionStore, QuickAction
+from hackerterminal.actions import DEFAULT_ACTIONS, ActionStore, QuickAction, needs_terminal
 from hackerterminal.cli import build_parser
 from hackerterminal.config import ConfigStore, Preferences, clamp, env_enabled
 from hackerterminal.logs import setup_logging
@@ -196,6 +196,33 @@ class ActionTests(unittest.TestCase):
             actions = ActionStore(path).load()
             self.assertEqual(len(actions), 10)
             self.assertEqual(actions[0].identifier, "identity")
+
+    def test_where_an_action_runs_is_saved_and_guessed_for_old_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "actions.ini"
+            store = ActionStore(path)
+            actions = [QuickAction("log", "Log", "tail -n 20 app.log"), QuickAction("top", "Top", "htop", in_terminal=True)]
+            self.assertTrue(store.save(actions))
+            self.assertEqual(store.load(), actions)
+            # Files written before the option existed: interactive programs keep using the pane.
+            path.write_text(
+                "[action:clear]\nlabel=Limpar\ncommand=clear\n\n[action:edit]\nlabel=Hosts\ncommand=sudo vim /etc/hosts\n\n"
+                "[action:disk]\nlabel=Disco\ncommand=df -h\n",
+                encoding="utf-8",
+            )
+            self.assertEqual([action.in_terminal for action in store.load()], [True, True, False])
+        self.assertTrue(next(a for a in DEFAULT_ACTIONS if a.identifier == "clear").in_terminal)
+        self.assertEqual([a.identifier for a in DEFAULT_ACTIONS if a.in_terminal], ["clear"])
+        self.assertTrue(needs_terminal("  sudo apt update"))
+        self.assertFalse(needs_terminal("sudoku-solver"))
+        self.assertFalse(needs_terminal(""))
+
+    def test_result_window_text_drops_terminal_codes(self) -> None:
+        from hackerterminal.dialogs.result import clean_output
+
+        self.assertEqual(clean_output("\x1b[1;32mok\x1b[0m pronto"), "ok pronto")
+        self.assertEqual(clean_output("\x1b]0;título\x07texto"), "texto")
+        self.assertEqual(clean_output("baixando 10%\rbaixando 100%\nfim"), "baixando 100%\nfim")
 
     def test_empty_action_list_is_supported(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
