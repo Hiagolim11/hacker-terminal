@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Hacker Terminal</title>
-<meta name="description" content="Terminal para sistemas Linux com 22 temas, integração com o shell, terminal suspenso no F12, conexões SSH e som de teclado mecânico. Grátis e de código aberto.">
+<meta name="description" content="Terminal para sistemas Linux com interface limpa, abertura rápida, 22 temas, integração com o shell, terminal suspenso no F12 e o som de 18 teclados mecânicos reais. Grátis e de código aberto.">
 <meta property="og:title" content="Hacker Terminal">
-<meta property="og:description" content="Terminal para sistemas Linux com 22 temas, integração com o shell, terminal suspenso e conexões SSH.">
+<meta property="og:description" content="Terminal para sistemas Linux com interface limpa, 22 temas, integração com o shell e o som de teclados mecânicos reais.">
 <meta property="og:image" content="https://hiagolim11.github.io/hacker-terminal/screenshots/hero.png">
 <meta name="theme-color" content="#f7f6f3" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#141413" media="(prefers-color-scheme: dark)">
@@ -234,7 +234,7 @@ footer { padding-block: clamp(72px, 11vw, 128px) 40px; }
 <main>
   <div class="container hero">
     <h1 class="reveal">Um terminal com cara própria.</h1>
-    <p class="hero-lead reveal">Para sistemas Linux, com 22 temas, integração com o shell, terminal suspenso no F12, conexões SSH e o som de um teclado mecânico. Grátis e de código aberto.</p>
+    <p class="hero-lead reveal">Para sistemas Linux. Interface limpa que abre em menos de um segundo, 22 temas, integração com o shell, terminal suspenso no F12 e o som de 18 teclados mecânicos reais. Grátis e de código aberto.</p>
     <div class="hero-actions reveal">
       <a class="button" href="https://github.com/Hiagolim11/hacker-terminal/releases/latest">Baixar a versão __VERSION__</a>
       <a class="button ghost" href="https://github.com/Hiagolim11/hacker-terminal">Ver o código</a>
@@ -245,7 +245,7 @@ footer { padding-block: clamp(72px, 11vw, 128px) 40px; }
       <span class="tag yellow">Em português</span>
     </div>
     <div class="shot reveal">
-      <img src="screenshots/hero.png" width="1280" height="760" alt="Janela do Hacker Terminal com painel de ações rápidas, prompt colorido e barra de status">
+      <img src="screenshots/hero.png" width="1280" height="760" alt="Janela do Hacker Terminal com o terminal ocupando a janela inteira, prompt colorido e barra de status discreta">
     </div>
   </div>
 
@@ -265,7 +265,7 @@ footer { padding-block: clamp(72px, 11vw, 128px) 40px; }
             <p>evidencias  notas.md  scan.sh</p>
             <p class="fail">hacker@lab:~$ grep -r senha /etc/nao-existe</p>
             <p class="err">grep: /etc/nao-existe: Arquivo ou diretório inexistente</p>
-            <div class="bar"><span>Zero Day · ~</span><b>SAÍDA 2</b></div>
+            <div class="bar"><span>~/lab</span><b>✗ saída 2 · 1 aba</b></div>
           </div>
         </article>
         <article class="card span-2 reveal">
@@ -279,9 +279,9 @@ footer { padding-block: clamp(72px, 11vw, 128px) 40px; }
           <p>O terminal suspenso aparece no topo da tela com uma tecla e some com a mesma tecla, com as abas intactas.</p>
         </article>
         <article class="card span-2 reveal">
-          <div class="icon green" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div>
-          <h3>SSH sem decorar nada</h3>
-          <p>Conexões salvas, chave instalada com um clique ou senha no chaveiro do sistema. Produção abre num tema vermelho.</p>
+          <div class="icon green" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M13 3L5 14h6l-1 7 8-11h-6l1-7z"/></svg></div>
+          <h3>Ações com um clique</h3>
+          <p>Portas, rotas, processos, um ping: o painel <kbd>Ctrl+Shift+B</kbd> roda o comando e mostra só o resultado, numa janela à parte, sem bagunçar o terminal.</p>
         </article>
         <article class="card span-2 reveal">
           <div class="icon blue" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16M3 12h9"/></svg></div>
@@ -290,12 +290,13 @@ footer { padding-block: clamp(72px, 11vw, 128px) 40px; }
         </article>
         <article class="card span-3 reveal">
           <div class="icon yellow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="3" y="7" width="18" height="12" rx="2"/><path d="M7 11h.01M11 11h.01M15 11h.01M7 15h10"/></svg></div>
-          <h3>Som de teclado mecânico</h3>
-          <p>Cada tecla toca o clique de um switch, sem atraso. Escolha o seu e ouça:</p>
-          <div class="switches" role="group" aria-label="Ouvir os switches">
-            <button class="switch" type="button" data-sound="audio/switch-red.mp3" aria-pressed="false"><i style="background:#d9473f"></i>Red</button>
-            <button class="switch" type="button" data-sound="audio/switch-brown.mp3" aria-pressed="false"><i style="background:#8a5a3b"></i>Brown</button>
-            <button class="switch" type="button" data-sound="audio/switch-blue.mp3" aria-pressed="false"><i style="background:#3f7fd9"></i>Blue</button>
+          <h3>O som de 18 teclados de verdade</h3>
+          <p>Gravações reais de Cherry MX, Topre, Holy Pandas e outros já vêm instaladas, tocando sem atraso. Ouça alguns:</p>
+          <div class="switches" role="group" aria-label="Ouvir os teclados">
+            <button class="switch" type="button" data-sound="audio/pack-cherrymx-blue-abs.mp3" aria-pressed="false"><i style="background:#3f7fd9"></i>Cherry MX Blue</button>
+            <button class="switch" type="button" data-sound="audio/pack-holy-pandas.mp3" aria-pressed="false"><i style="background:#c9a227"></i>Holy Pandas</button>
+            <button class="switch" type="button" data-sound="audio/pack-topre-purple-hybrid-pbt.mp3" aria-pressed="false"><i style="background:#7a5bbf"></i>Topre</button>
+            <button class="switch" type="button" data-sound="audio/pack-nk-cream.mp3" aria-pressed="false"><i style="background:#d8c7a0"></i>NK Cream</button>
           </div>
         </article>
         <article class="card span-3 reveal">
@@ -338,7 +339,7 @@ footer { padding-block: clamp(72px, 11vw, 128px) 40px; }
         <div class="shortcut"><span>Histórico de comandos</span><kbd>Ctrl+Shift+H</kbd></div>
         <div class="shortcut"><span>Dividir lado a lado</span><kbd>Ctrl+Shift+D</kbd></div>
         <div class="shortcut"><span>Copiar saída do último comando</span><kbd>Ctrl+Shift+L</kbd></div>
-        <div class="shortcut"><span>Conexões SSH</span><kbd>Ctrl+Shift+S</kbd></div>
+        <div class="shortcut"><span>Ações rápidas</span><kbd>Ctrl+Shift+B</kbd></div>
         <div class="shortcut"><span>Paleta de comandos</span><kbd>Ctrl+Shift+P</kbd></div>
         <div class="shortcut"><span>Digitar em todos os painéis</span><kbd>Ctrl+Shift+I</kbd></div>
         <div class="shortcut"><span>Terminal suspenso</span><kbd>F12</kbd></div>
@@ -371,7 +372,8 @@ footer { padding-block: clamp(72px, 11vw, 128px) 40px; }
       <div class="faq reveal">
         <details><summary>É grátis?</summary><p>Sim. O Hacker Terminal é de código aberto, sob a licença MIT. O código está no GitHub.</p></details>
         <details><summary>Funciona com o meu shell?</summary><p>Sim, ele abre o seu shell de sempre. A integração (marcas de comando, histórico, saltos) funciona com zsh e bash e é ligada sozinha; o resto vale para qualquer shell.</p></details>
-        <details><summary>Ele guarda minhas senhas SSH?</summary><p>Só se você pedir, e no chaveiro do sistema, nunca nos arquivos do terminal. O mais seguro é o botão de acesso por chave, que dispensa senha.</p></details>
+        <details><summary>De onde vêm os sons de teclado?</summary><p>São os pacotes oficiais do <a href="https://github.com/hainguyents13/mechvibes">Mechvibes</a>, gravados de teclados reais e distribuídos sob a licença MIT. Eles vêm compactados (2,5 MB no total) e você ainda pode importar outros pacotes Mechvibes.</p></details>
+        <details><summary>Ele guarda minhas senhas?</summary><p>Só se você pedir, e no chaveiro do sistema, nunca nos arquivos do terminal.</p></details>
         <details><summary>Onde ficam as minhas configurações?</summary><p>Em <code>~/.config/hacker-terminal/</code>: preferências, temas, perfis, ações e conexões. O histórico de comandos fica em <code>~/.local/state/hacker-terminal/</code>, só no seu computador.</p></details>
         <details><summary>Como atualizo?</summary><p>Baixe o novo <code>.deb</code> e instale com o mesmo comando do apt. Suas configurações continuam onde estão.</p></details>
       </div>
@@ -386,7 +388,7 @@ footer { padding-block: clamp(72px, 11vw, 128px) 40px; }
       <a class="button" href="https://github.com/Hiagolim11/hacker-terminal/releases/latest">Baixar a versão __VERSION__</a>
     </div>
     <div class="footer-meta">
-      <span>Hacker Terminal · Licença MIT · Imagens capturadas do próprio app</span>
+      <span>Hacker Terminal · Licença MIT · Imagens capturadas do próprio app · Sons de teclado do Mechvibes (MIT)</span>
       <nav aria-label="Rodapé">
         <a href="https://github.com/Hiagolim11/hacker-terminal">GitHub</a>
         <a href="https://github.com/Hiagolim11/hacker-terminal/blob/main/CHANGELOG.md">Novidades</a>
@@ -402,7 +404,7 @@ footer { padding-block: clamp(72px, 11vw, 128px) 40px; }
   const onScroll = () => nav.classList.toggle("scrolled", window.scrollY > 8);
   onScroll(); window.addEventListener("scroll", onScroll, { passive: true });
 
-  /* switch samples: real recordings of the app's sound engine */
+  /* keyboard samples: the bundled Mechvibes recordings, played through the app's sound engine */
   let playing = null;
   document.querySelectorAll(".switch").forEach((button) => {
     const audio = new Audio(button.dataset.sound);
