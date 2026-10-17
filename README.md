@@ -24,7 +24,7 @@ GTK 3 · VTE · Python · sem Electron, sem navegador, sem telemetria
 
 <br>
 
-<img src="docs/screenshots/hero.png" alt="Hacker Terminal com o tema Matrix Green" width="100%">
+<img src="docs/screenshots/hero.png" alt="Hacker Terminal no tema Zero Day: um comando que falhou ganha a marca vermelha na margem e o código de saída na barra de status" width="100%">
 
 </div>
 
@@ -138,21 +138,21 @@ Por cima desse motor maduro, ele adiciona uma camada pensada para quem passa o d
 
 <br><br>
 
-**Temas clássicos** — Minimal Dark, Matrix Green, Cyberpunk Purple, Amber CRT e Ice Blue
+**Temas clássicos** — Matrix Green, Cyberpunk Purple e Ice Blue (além de Minimal Dark e Amber CRT)
 
-<img src="docs/screenshots/themes.png" alt="Os temas clássicos" width="100%">
+<img src="docs/screenshots/themes.png" alt="Os temas clássicos Matrix Green, Cyberpunk Purple e Ice Blue" width="100%">
 
 <br><br>
 
-**Grade de até 4 painéis por aba**
+**Grade de até 4 painéis por aba, cada um com seu nome**
 
-<img src="docs/screenshots/grid.png" alt="Grade 2x2 de painéis com o tema Fósforo Verde" width="100%">
+<img src="docs/screenshots/grid.png" alt="Grade 2x2 de painéis no tema Fósforo Verde, com os nomes projeto, alvos, notas e git" width="100%">
 
 <br><br>
 
 **Painéis divididos, abas e pesquisa no histórico**
 
-<img src="docs/screenshots/split.png" alt="Painéis divididos com pesquisa" width="100%">
+<img src="docs/screenshots/split.png" alt="Dois painéis lado a lado no tema Cyberpunk Purple, com a pesquisa destacando a palavra Verde" width="100%">
 
 <br><br>
 
@@ -567,6 +567,10 @@ Requer VTE 0.78 ou mais novo (`hacker-terminal --diagnose` informa). Desligue em
 
 ### Histórico de comandos
 
+<div align="center">
+<img src="docs/screenshots/history.png" alt="Diálogo do histórico de comandos com resultado, duração e pasta de cada comando; as falhas aparecem em vermelho" width="80%">
+</div>
+
 `Ctrl+Shift+H` (ou botão direito → **Histórico de comandos…**, ou a paleta) busca os comandos que você rodou **em todas as abas e janelas**, inclusive em sessões anteriores. Cada linha mostra se deu certo (✓) ou falhou (✗ e o código), quando foi, quanto durou e onde (pasta, nome do painel ou conexão SSH).
 
 - A busca considera todas as palavras, no comando, na pasta e no lugar: `nmap 10.0.0` acha o `nmap -sV 10.0.0.5` de ontem.
@@ -584,6 +588,10 @@ O histórico depende da integração com o shell, fica só neste computador em `
 `Ctrl+Shift+R` (ou botão direito → **Renomear painel…**) dá um nome a um painel, como “servidor web” ou “logs”. O nome aparece numa faixa no topo do painel (destacada no painel ativo), na aba e nos avisos. Os nomes e o tamanho de cada divisão são restaurados junto com a sessão.
 
 ### Conexões SSH
+
+<div align="center">
+<img src="docs/screenshots/ssh.png" alt="Gerenciador de conexões SSH com conexões salvas e hosts lidos do ~/.ssh/config" width="70%">
+</div>
 
 `Ctrl+Shift+S`, o botão ⇄ na barra ou a paleta abrem o gerenciador. Os hosts do seu `~/.ssh/config` aparecem automaticamente; em **Nova…** você salva destino, porta, chave e opções extras (por exemplo `-J bastiao`). Cada conexão abre numa aba própria, com 🔒 e o nome dela, e pode ter:
 
@@ -892,7 +900,7 @@ hacker-terminal/
 │   └── smoke.sh              # suíte completa: testes, instalação e .deb
 ├── packaging/                # build do .deb e metadados AppStream
 ├── assets/                   # ícone e arquivo .desktop
-├── docs/                     # capturas de tela e amostras de áudio
+├── docs/                     # site (GitHub Pages), capturas de tela e amostras de áudio
 ├── install.sh · run.sh · Makefile
 ```
 
@@ -904,6 +912,21 @@ make deb         # gera dist/hacker-terminal_<versão>_all.deb
 ```
 
 O projeto **não usa dependências do PyPI**: PyGObject, GTK, VTE e GStreamer vêm do sistema. A suíte roda o áudio em `fakesink` (sem fazer barulho), e o teste gráfico inclui eventos reais do X via `xdotool` para cobrir a rolagem. O GitHub Actions executa tudo a cada *push* e *pull request*.
+
+### Publicar uma versão
+
+O GitHub publica a release sozinho quando recebe uma tag `vX.Y.Z`:
+
+1. Atualize a versão em `hackerterminal/constants.py`, `tests/smoke.sh`, no metainfo (`packaging/*.metainfo.xml`) e a seção `## X.Y.Z` do `CHANGELOG.md`.
+2. Regere o site: `python3 packaging/build_site.py`.
+3. Faça o commit e envie a tag anotada — a primeira linha da mensagem vira o título da release:
+
+   ```bash
+   git tag -a v0.19.0 -m "Hacker Terminal 0.19.0 — o que mudou"
+   git push origin main v0.19.0
+   ```
+
+O fluxo [`release.yml`](.github/workflows/release.yml) confere se a tag, o `CHANGELOG.md` e o site batem com a versão, roda toda a suíte de testes, gera o `.deb` e publica a release com as notas do CHANGELOG. Se algo não bater, ele para antes de publicar. Para testar o fluxo sem publicar nada, use *Actions → release → Run workflow* com "Só testar" marcado.
 
 Contribuições são bem-vindas — leia o [CONTRIBUTING.md](CONTRIBUTING.md). O histórico de versões está no [CHANGELOG.md](CHANGELOG.md) e as decisões técnicas e correções no [AUDIT.md](AUDIT.md).
 

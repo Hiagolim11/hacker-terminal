@@ -1,0 +1,97 @@
+name: release
+
+# Pushing a tag such as v0.19.0 tests, builds and publishes that version.
+# "Run workflow" (workflow_dispatch) does the same for an existing tag; with
+# dry_run on (the default) it stops before publishing, to test the pipeline.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag a publicar (ex.: v0.19.0)"
+        required: true
+      dry_run:
+        description: "Só testar: não publicar a release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi python3-gi-cairo gir1.2-secret-1 gnome-keyring librsvg2-common gir1.2-gtk-3.0 gir1.2-vte-2.91 desktop-file-utils xvfb xdotool python3-gst-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good dpkg-dev
+
+      - name: Check the version, changelog and site
+        run: |
+          version="$(sed -n 's/^VERSION = "\(.*\)"$/\1/p' hackerterminal/constants.py)"
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::A tag $TAG não bate com a versão $version em hackerterminal/constants.py"
+            exit 1
+          fi
+          if ! grep -qx "## $version" CHANGELOG.md; then
+            echo "::error::O CHANGELOG.md não tem a seção '## $version'"
+            exit 1
+          fi
+          python3 packaging/build_site.py
+          if ! git diff --quiet -- docs/index.html; then
+            echo "::error::docs/index.html está desatualizado: rode python3 packaging/build_site.py e faça o commit"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Run checks
+        run: PATH=/usr/bin:/bin HACKER_TERMINAL_GUI_TEST=1 make check
+
+      - name: Build the package
+        run: |
+          make deb
+          test -s "dist/hacker-terminal_${VERSION}_all.deb"
+          dpkg-deb --info "dist/hacker-terminal_${VERSION}_all.deb" | grep -F "Version: ${VERSION}"
+
+      - name: Write the release notes
+        run: |
+          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+          title="$(git tag -l --format='%(contents:subject)' "$TAG")"
+          case "$title" in "" | "$TAG") title="Hacker Terminal $VERSION" ;; esac
+          echo "TITLE=$title" >> "$GITHUB_ENV"
+          {
+            printf '![Hacker Terminal](https://raw.githubusercontent.com/%s/%s/docs/screenshots/hero.png)\n\n' "$GITHUB_REPOSITORY" "$TAG"
+            printf '## Instalação\n\n```bash\nsudo apt install ./hacker-terminal_%s_all.deb\n```\n\n## Novidades\n' "$VERSION"
+            awk -v head="## $VERSION" '$0 == head { found = 1; next } /^## / { found = 0 } found' CHANGELOG.md
+          } > release-notes.md
+          echo "Título: $title"
+          cat release-notes.md
+
+      - name: Keep the package as a build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hacker-terminal-${{ env.VERSION }}
+          path: dist/hacker-terminal_${{ env.VERSION }}_all.deb
+
+      - name: Publish the release
+        if: env.DRY_RUN != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          deb="dist/hacker-terminal_${VERSION}_all.deb"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # Re-running for a published tag refreshes its package and notes.
+            gh release upload "$TAG" "$deb" --clobber
+            gh release edit "$TAG" --title "$TITLE" --notes-file release-notes.md
+          else
+            gh release create "$TAG" "$deb" --title "$TITLE" --notes-file release-notes.md --verify-tag
+          fi
