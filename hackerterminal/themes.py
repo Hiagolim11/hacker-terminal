@@ -274,6 +274,15 @@ entry selection, selection {{ background-color: {accent_soft}; color: {self.fore
 dialog list row {{ border-radius: 6px; margin: 1px 4px; }}
 dialog list row:selected {{ background-image: none; background-color: {accent_soft}; color: {self.foreground}; }}
 dialog list row:hover {{ background-color: {self.surface}; }}
+dialog button, .result-window button, filechooser button {{
+  background-image: none; background-color: {self.surface}; color: {self.foreground};
+  border: 1px solid {self.border}; border-radius: 6px; box-shadow: none; text-shadow: none;
+  -gtk-icon-shadow: none; min-height: 28px; padding: 2px 12px;
+}}
+dialog button:hover, .result-window button:hover, filechooser button:hover {{ background-color: {raised}; border-color: {self.muted}; }}
+dialog button:active, dialog button:checked, .result-window button:active {{ background-color: {accent_soft}; }}
+dialog button:disabled, .result-window button:disabled {{ color: {self.muted}; background-color: transparent; opacity: 0.6; }}
+dialog button label, .result-window button label {{ color: inherit; }}
 dialog button.suggested-action {{
   background-image: none; background-color: {self.accent}; color: {self.background};
   border-color: {self.accent}; box-shadow: none; text-shadow: none; font-weight: 700;

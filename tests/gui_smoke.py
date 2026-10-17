@@ -823,6 +823,34 @@ def main() -> int:
             if "✓" not in result.status.get_text():
                 raise AssertionError("quick action did not report success")
             result.destroy()
+            # Sized to its output, in the terminal's font, with every line on screen. Six
+            # lines make the window grow, which is when the view used to stay scrolled.
+            window.action_panel.run_action(QuickAction("six", "Seis", "seq 1 6"))
+            result = wait_result()
+            deadline = time.monotonic() + 0.5  # let the window finish growing
+            while time.monotonic() < deadline:
+                Gtk.main_iteration_do(False)
+            adjustment = result.scroller.get_vadjustment()
+            if adjustment.get_upper() > adjustment.get_page_size() or adjustment.get_value() != 0:
+                raise AssertionError("a short result needed scrolling")
+            if result.get_size()[1] > 320:
+                raise AssertionError(f"a six-line result opened too tall: {result.get_size()}")
+            font = active_pane.terminal.get_font()
+            view_font = result.view.get_pango_context().get_font_description()
+            if view_font.get_family() != font.get_family() or view_font.get_size() != font.get_size():
+                raise AssertionError(f"result window font {view_font.to_string()} is not the terminal's {font.to_string()}")
+            result.destroy()
+            # A running command that outgrows the window: the window stops at its maximum and follows the end.
+            window.action_panel.run_action(QuickAction("grow", "Cresce", "for i in $(seq 1 60); do echo linha $i; sleep 0.02; done"))
+            result = wait_result(8)
+            for _ in range(20):
+                Gtk.main_iteration_do(False)
+            adjustment = result.scroller.get_vadjustment()
+            if adjustment.get_value() + adjustment.get_page_size() < adjustment.get_upper() - 2:
+                raise AssertionError("a long running result did not follow its output")
+            if result.scroller.get_allocated_height() > 600:
+                raise AssertionError("the result window grew past its maximum")
+            result.destroy()
             window.action_panel.run_action(QuickAction("fails", "Falha", "echo nada >&2; exit 3"))
             result = wait_result()
             if result.exit_status != 3 or "nada" not in result_text(result) or "Saída 3" not in result.status.get_text():

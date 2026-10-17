@@ -136,6 +136,7 @@ class ActionPanel(Gtk.Box):
             command,
             terminal.current_working_directory(),
             self.run_command,
+            terminal.terminal.get_font(),
         )
 
     def set_compact(self, compact: bool) -> None:

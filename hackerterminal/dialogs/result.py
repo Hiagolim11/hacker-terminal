@@ -16,12 +16,15 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from ..runtime import Gdk, Gio, GLib, Gtk
+from ..runtime import Gdk, Gio, GLib, Gtk, Pango
 from ..terminal import format_duration, resolve_shell
 
 ANSI = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])")
 MAX_OUTPUT = 2 * 1024 * 1024  # characters kept; the rest is cut with a note
 CHUNK = 64 * 1024
+# The window grows with its output between these sizes (text area, in pixels).
+MIN_TEXT = (420, 72)
+MAX_TEXT = (980, 560)
 
 
 def clean_output(text: str) -> str:
@@ -33,7 +36,7 @@ def clean_output(text: str) -> str:
 
 class ResultWindow(Gtk.Window):
     def __init__(self, parent: Gtk.Window | None, title: str, command: str, directory: Path,
-                 run_in_terminal: Callable[[str], None]) -> None:
+                 run_in_terminal: Callable[[str], None], font: Pango.FontDescription | None = None) -> None:
         super().__init__(title=title, transient_for=parent, destroy_with_parent=True)
         self.command = command
         self.run_in_terminal = run_in_terminal
@@ -45,7 +48,7 @@ class ResultWindow(Gtk.Window):
         self.truncated = False
         self.finished = False
         self.exit_status: int | None = None
-        self.set_default_size(720, 420)
+        self.fit_source = 0
         self.get_style_context().add_class("result-window")
         self.connect("destroy", lambda *_: self.stop())
         self.connect("key-press-event", self.on_key)
@@ -61,10 +64,20 @@ class ResultWindow(Gtk.Window):
                                  wrap_mode=Gtk.WrapMode.WORD_CHAR, left_margin=14, right_margin=14,
                                  top_margin=12, bottom_margin=12)
         self.view.get_style_context().add_class("result-output")
+        if font is not None and font.get_family():
+            # The terminal's own font and size (a widget-level provider beats the theme's).
+            size = font.get_size() / Pango.SCALE or 11
+            family = font.get_family().replace("\\", "").replace('"', "")
+            provider = Gtk.CssProvider()
+            provider.load_from_data(f'textview {{ font-family: "{family}"; font-size: {size:g}pt; }}'.encode())
+            self.view.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 2)
         self.buffer = self.view.get_buffer()
-        self.end_mark = self.buffer.create_mark(None, self.buffer.get_end_iter(), False)
-        scroller = Gtk.ScrolledWindow()
-        scroller.add(self.view)
+        self.scroller = Gtk.ScrolledWindow()
+        self.scroller.set_min_content_width(MIN_TEXT[0])
+        self.scroller.set_min_content_height(MIN_TEXT[1])
+        self.scroller.add(self.view)
+        self.following = False
+        self.scroller.get_vadjustment().connect("changed", self.on_scroll_changed)
 
         bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         bar.get_style_context().add_class("result-bar")
@@ -80,7 +93,7 @@ class ResultWindow(Gtk.Window):
         bar.pack_end(terminal_button, False, False, 0)
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        box.pack_start(scroller, True, True, 0)
+        box.pack_start(self.scroller, True, True, 0)
         box.pack_start(bar, False, False, 0)
         self.add(box)
         self.show_all()
@@ -151,7 +164,49 @@ class ResultWindow(Gtk.Window):
             self.truncated = True
         self.kept += len(text)
         self.buffer.insert(self.buffer.get_end_iter(), text)
-        self.view.scroll_mark_onscreen(self.end_mark)
+        if not self.fit_source:
+            self.fit_source = GLib.idle_add(self.fit_to_content)
+
+    # ------------------------------------------------------------ sizing
+    def fit_to_content(self) -> bool:
+        """Grow (never shrink) with the output, up to MAX_TEXT.
+
+        The window grows through the scroll area's minimum content size, so
+        GTK lays everything out itself; done() lowers the minimum again, so
+        the user can still make the window smaller.
+        """
+        self.fit_source = 0
+        end = self.buffer.get_start_iter()
+        end.forward_lines(MAX_TEXT[1] // 8)  # more lines than fit at any font size
+        layout = self.view.create_pango_layout(self.buffer.get_text(self.buffer.get_start_iter(), end, False))
+        # Width: the longest line, unwrapped. Height: what the view itself needs at that width.
+        width = layout.get_pixel_size()[0] + self.view.get_left_margin() + self.view.get_right_margin() + 24  # + scrollbar
+        width = max(self.scroller.get_min_content_width(), min(MAX_TEXT[0], width))
+        height = self.view.get_preferred_height_for_width(width)[1]
+        height = max(self.scroller.get_min_content_height(), min(MAX_TEXT[1], height))
+        self.scroller.set_min_content_width(width)
+        self.scroller.set_min_content_height(height)
+        if height >= MAX_TEXT[1] and not self.following and not self.finished:
+            # The output outgrew the window: from now on, keep its end in view
+            # like a terminal (see on_scroll_changed).
+            self.following = True
+            self.on_scroll_changed(self.scroller.get_vadjustment())
+        return False
+
+    def on_scroll_changed(self, adjustment) -> None:
+        # Follow the end through the adjustment itself: scroll_mark_onscreen()
+        # used a page size GTK had not updated yet, scrolling past the text
+        # (or, while the window grew, hiding its first line).
+        if self.following:
+            adjustment.set_value(adjustment.get_upper() - adjustment.get_page_size())
+
+    def release_size(self) -> bool:
+        if self.fit_source:
+            return True  # a fit is still pending: release after it
+        self.following = False  # the output is complete: scrolling is the user's now
+        self.scroller.set_min_content_width(MIN_TEXT[0])
+        self.scroller.set_min_content_height(MIN_TEXT[1])
+        return False
 
     def done(self, status: int, stopped: bool = False) -> None:
         self.finished = True
@@ -169,6 +224,7 @@ class ResultWindow(Gtk.Window):
         self.stop_button.set_sensitive(False)
         if not self.buffer.get_char_count():
             self.append("(o comando não mostrou nada)\n")
+        GLib.timeout_add(300, self.release_size)
 
     def copy(self) -> None:
         start, end = self.buffer.get_bounds()
