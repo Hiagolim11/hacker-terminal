@@ -2,6 +2,13 @@
 
 Este projeto segue [Semantic Versioning](https://semver.org/).
 
+## 0.21.0
+
+- **Prévia ao vivo dos temas na paleta** (`Ctrl+Shift+P`): ao selecionar *Aplicar tema: …* com as setas ou digitando, a janela já mostra o tema; fechar sem escolher volta ao tema de antes, e nada é salvo até você escolher. Passar rápido pela lista não recolore a cada linha.
+- **A janela de resultado das ações rápidas se ajusta à saída**: três linhas abrem uma janela pequena, saídas maiores a fazem crescer até 980×560 de texto, e você ainda pode redimensioná-la. Um comando que continua escrevendo acompanha o fim da saída, como no terminal. O texto usa a fonte e o tamanho do terminal.
+- Corrigido: a janela de resultado às vezes escondia a primeira linha atrás da rolagem (ou rolava além do fim numa saída longa).
+- Os **botões dos diálogos seguem o tema** (antes ficavam no estilo do sistema, escuros nos temas claros): Preferências, editores, janela de resultado e seletor de arquivos.
+
 ## 0.20.0
 
 - **18 gravações de teclados reais incluídas**: os pacotes oficiais do Mechvibes (MIT), entre eles Cherry MX Black/Blue/Brown/Red em ABS e PBT, Holy Pandas, NK Cream, Topre e EG, aparecem direto em *Som do teclado → Switch*. Foram compactados de 21 MB para 2,5 MB, mantendo só os trechos de cada tecla em mono (`packaging/fetch_soundpacks.py`, a partir de um commit fixo). As licenças vão em `hackerterminal/soundpacks/LICENSE` e no `copyright` do `.deb`.

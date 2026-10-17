@@ -925,6 +925,25 @@ def main() -> int:
             window.action_panel.reload_actions()
             if len(window.action_panel.action_buttons) != 1:
                 raise AssertionError("custom actions were not reloaded")
+            # Live preview: selecting a theme shows it, saves nothing, and cancelling goes back.
+            saved_theme = window.preferences.theme
+            saved_file = store.path.read_text(encoding="utf-8") if store.path.exists() else None
+            palette = CommandPaletteDialog(window, window.palette_items(), window.preview_theme)
+            palette.entry.set_text("aurora")
+            deadline = time.monotonic() + 0.5
+            while time.monotonic() < deadline:
+                Gtk.main_iteration_do(False)
+            if window.active_theme.identifier != "aurora" or window.preferences.theme != saved_theme:
+                raise AssertionError("selecting a theme in the palette did not preview it, or saved it")
+            if (store.path.read_text(encoding="utf-8") if store.path.exists() else None) != saved_file:
+                raise AssertionError("a theme preview was written to the settings")
+            palette.entry.set_text("histórico")  # a row without a preview: back to the real theme
+            deadline = time.monotonic() + 0.5
+            while time.monotonic() < deadline:
+                Gtk.main_iteration_do(False)
+            if window.active_theme.identifier != saved_theme:
+                raise AssertionError("leaving the theme rows did not restore the theme")
+            palette.destroy()
             palette = CommandPaletteDialog(window, window.palette_items())
             palette.entry.set_text("cyberpunk")
             matches = palette.filtered_items()

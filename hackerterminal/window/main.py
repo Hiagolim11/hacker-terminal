@@ -651,6 +651,7 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
                     f"Aplicar tema: {theme.name}",
                     "Tema",
                     lambda value=theme.identifier: self.apply_theme(value),
+                    theme.identifier,  # previewed live while selected
                 )
             )
         items.append(("Renomear painel…", "Painel", self.rename_pane))
@@ -670,12 +671,25 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         return items
 
     def show_command_palette(self) -> None:
-        dialog = CommandPaletteDialog(self, self.palette_items())
+        dialog = CommandPaletteDialog(self, self.palette_items(), self.preview_theme)
         response = dialog.run()
         callback = dialog.selected_callback
+        previewed = dialog.previewing
         dialog.destroy()
+        if previewed is not None:
+            self.preview_theme(None)  # nothing was saved: back to the real theme first
         if response == Gtk.ResponseType.OK and callback is not None:
             callback()
+
+    def preview_theme(self, identifier: str | None) -> None:
+        """Show a theme without saving it; None goes back to the saved one."""
+        theme = self.theme_manager.get(identifier or self.preferences.theme)
+        if theme is self.active_theme:
+            return
+        self.active_theme = theme
+        self.load_theme_css()
+        for terminal in self.terminals():
+            terminal.apply_preferences(theme)
 
     def apply_profile(self, identifier: str) -> None:
         self.profile_manager.apply(identifier, self.preferences)
