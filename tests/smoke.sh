@@ -8,7 +8,7 @@ export HACKER_TERMINAL_AUDIO_SINK=fakesink
 # Headless runners have no accessibility bus; its warning must not be fatal.
 export NO_AT_BRIDGE=1
 
-python3 -m compileall -q hacker_terminal.py hackerterminal tests/test_core.py tests/gui_smoke.py tests/shell_integration.py
+python3 -m compileall -q hacker_terminal.py hackerterminal tests
 python3 -m py_compile bin/ht-open
 python3 -m py_compile bin/ht-askpass
 sh -n bin/ht-copy-key
@@ -51,6 +51,11 @@ elif [[ "${HACKER_TERMINAL_GUI_TEST:-0}" == "1" ]] && command -v xvfb-run >/dev/
 else
   ./run.sh --diagnose
   printf '%s\n' "SKIP: smoke gráfico (use HACKER_TERMINAL_GUI_TEST=1 com xvfb-run)" >&2
+fi
+if [[ "${HACKER_TERMINAL_GUI_TEST:-0}" == "1" ]] && command -v dbus-run-session >/dev/null \
+    && command -v xvfb-run >/dev/null && command -v xdotool >/dev/null; then
+  # Private bus and display: never the user's running Hacker Terminal.
+  dbus-run-session -- env HT_PRIVATE_BUS=1 xvfb-run -a python3 tests/single_instance.py
 fi
 if command -v dbus-run-session >/dev/null && command -v gnome-keyring-daemon >/dev/null; then
   dbus-run-session -- env HT_PRIVATE_BUS=1 python3 tests/ssh_access.py

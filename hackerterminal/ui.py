@@ -1348,6 +1348,7 @@ class PreferencesDialog(Gtk.Dialog):
                 general.full(row)
             self.dropdown_status_source = 0
             self.update_dropdown_status()
+            self.connect("destroy", lambda *_: self.cancel_dropdown_status())
         else:
             general.hint(
                 "Crie um atalho global no seu ambiente gráfico (por exemplo, F12) que execute o comando abaixo."
@@ -1519,6 +1520,11 @@ class PreferencesDialog(Gtk.Dialog):
     def dropdown_key_name(self) -> str | None:
         keyval, modifiers = Gtk.accelerator_parse(self.dropdown_key.get_text().strip())
         return Gtk.accelerator_name(keyval, modifiers) if keyval else None
+
+    def cancel_dropdown_status(self) -> None:
+        if self.dropdown_status_source:
+            GLib.source_remove(self.dropdown_status_source)
+            self.dropdown_status_source = 0
 
     def schedule_dropdown_status(self) -> None:
         # Debounced: each check asks xfconf, no need to do it per keystroke.
@@ -1930,6 +1936,8 @@ class HackerTerminal(Gtk.ApplicationWindow):
         profile_manager: ProfileManager,
         css_provider: Gtk.CssProvider,
         dropdown: bool = False,
+        restore: bool = True,
+        boot: bool | None = None,
     ) -> None:
         super().__init__(application=application, title="Hacker Terminal")
         self.dropdown = dropdown
@@ -1960,11 +1968,12 @@ class HackerTerminal(Gtk.ApplicationWindow):
         self.viewers: dict[Gtk.Widget, TerminalPane | None] = {}
         self.broadcast_frames: set[Gtk.Frame] = set()
         self.connection_store = ConnectionStore()
-        self.open_server = OpenServer(self.open_file_from_pane)
-        self.open_socket = self.open_server.start()
+        self.open_socket = (
+            application.ensure_open_server() if isinstance(application, HackerTerminalApp) else None
+        )
         self.saved_session = (
             self.session_store.load()
-            if self.preferences.restore_session and not self.config.command
+            if restore and self.preferences.restore_session and not self.config.command
             else None
         )
         if self.saved_session is not None:
@@ -1991,11 +2000,12 @@ class HackerTerminal(Gtk.ApplicationWindow):
         self.stack.add_named(self.boot, "boot")
         self.workspace = self.build_workspace()
         self.stack.add_named(self.workspace, "terminal")
-        self.stack.set_visible_child_name("boot" if self.preferences.boot else "terminal")
-        self.set_toolbar_sensitive(not self.preferences.boot)
+        show_boot = self.preferences.boot if boot is None else boot
+        self.stack.set_visible_child_name("boot" if show_boot else "terminal")
+        self.set_toolbar_sensitive(not show_boot)
         self.show_all()
-        if self.preferences.boot:
-            GLib.timeout_add(100, self.boot.begin)
+        if show_boot:
+            GLib.timeout_add(100, lambda: not self.closing_window and self.boot.begin() and False)
         else:
             self.enter_terminal()
         self.status_source_id = GLib.timeout_add_seconds(3, self.refresh_status)
@@ -2236,7 +2246,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
 
     def on_window_focus_in(self, _window, _event) -> bool:
         """Restore VTE focus when X11 consumes the tap that activates the window."""
-        GLib.idle_add(self.restore_active_terminal_focus)
+        self.when_idle(self.restore_active_terminal_focus)
         return False
 
     def restore_active_terminal_focus(self) -> bool:
@@ -3077,10 +3087,23 @@ class HackerTerminal(Gtk.ApplicationWindow):
     def on_switch_page(self, _notebook, page, _number) -> None:
         pane = self.active_panes.get(page) if isinstance(page, Gtk.Frame) else None
         if pane is not None:
-            GLib.idle_add(pane.terminal.grab_focus)
+            self.when_idle(pane.terminal.grab_focus)
         elif page in self.viewers:
-            GLib.idle_add(page.grab_focus)
-        GLib.idle_add(lambda: self.update_status() and False)
+            self.when_idle(page.grab_focus)
+        self.when_idle(self.update_status)
+
+    def when_idle(self, callback: Callable[[], object]) -> None:
+        """Run ``callback`` once the main loop is idle, unless the window is gone.
+
+        A callback that touched a destroyed window crashed the whole process,
+        and every window shares that process.
+        """
+        def run() -> bool:
+            if not self.closing_window:
+                callback()
+            return False
+
+        GLib.idle_add(run)
 
     def show_info(self, message: str) -> None:
         dialog = Gtk.MessageDialog(
@@ -3232,6 +3255,9 @@ class HackerTerminal(Gtk.ApplicationWindow):
             self.action_panel.sync()
             self.apply_panel_visibility()
         self.update_status()
+        application = self.get_application()
+        if isinstance(application, HackerTerminalApp):
+            application.sync_preferences(self)
 
     def apply_panel_visibility(self) -> None:
         if self.action_panel is None:
@@ -3292,7 +3318,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
         return True
 
     def on_window_destroy(self, _window) -> None:
-        self.open_server.stop()
+        self.closing_window = True  # pending idle callbacks must not touch it
         context = GLib.MainContext.default()
         for attribute in ("status_source_id", "autosave_source_id", "command_source_id", "toast_source"):
             source = getattr(self, attribute, 0)
@@ -3365,6 +3391,14 @@ class HackerTerminal(Gtk.ApplicationWindow):
         return True
 
 
+def report_error(command_line, message: str) -> None:
+    """Print on the stderr of the command that asked for the window."""
+    if hasattr(command_line, "printerr_literal"):  # GLib 2.80+
+        command_line.printerr_literal(message)
+    else:
+        LOGGER.warning(message.strip())
+
+
 class HackerTerminalApp(Gtk.Application):
     def __init__(
         self,
@@ -3376,14 +3410,23 @@ class HackerTerminalApp(Gtk.Application):
         profile_manager: ProfileManager,
         css_provider: Gtk.CssProvider,
         dropdown: bool = False,
+        separate: bool = False,
     ) -> None:
         if dropdown:
             # Unique: running --dropdown again reaches this instance over
             # D-Bus and toggles its window instead of opening another.
             super().__init__(application_id=APP_ID + ".Dropdown", flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
-        else:
+        elif separate:
             super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.NON_UNIQUE)
+        else:
+            # One process for every plain window: a new launch passes its
+            # command line here (see launcher.py) and gets a window at once.
+            super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
         self.dropdown = dropdown
+        self.windows_opened = 0
+        self.open_server: OpenServer | None = None
+        self.open_socket: Path | None = None
+        self.syncing_preferences = False
         self.config = config
         self.store = store
         self.action_store = action_store
@@ -3417,7 +3460,86 @@ class HackerTerminalApp(Gtk.Application):
         self.quit()
         return False
 
+    def ensure_open_server(self) -> Path | None:
+        """One ht-open socket per process, shared by its windows."""
+        if self.open_server is None:
+            self.open_server = OpenServer(self.route_open)
+            self.open_socket = self.open_server.start()
+        return self.open_socket
+
+    def route_open(self, path: Path, pane_id: str | None) -> None:
+        windows = [window for window in self.get_windows() if isinstance(window, HackerTerminal)]
+        owner = next((window for window in windows if window.pane_by_id(pane_id) is not None), None)
+        target = owner or (windows[0] if windows else None)  # get_windows lists the most recent first
+        if target is not None:
+            target.open_file_from_pane(path, pane_id)
+
+    def sync_preferences(self, origin: "HackerTerminal") -> None:
+        """Windows share one Preferences object: apply a change everywhere."""
+        if self.syncing_preferences:
+            return
+        self.syncing_preferences = True
+        try:
+            for window in self.get_windows():
+                if isinstance(window, HackerTerminal) and window is not origin and not window.closing_window:
+                    window.preferences_changed()
+        finally:
+            self.syncing_preferences = False
+
+    def do_command_line(self, command_line) -> int:
+        # An exception here would leave the launching command waiting forever.
+        try:
+            return self.handle_command_line(command_line)
+        except Exception:
+            LOGGER.exception("falha ao abrir janela pedida pela linha de comando")
+            report_error(command_line, "hacker-terminal: não foi possível abrir a janela (veja o log)\n")
+            return 1
+
+    def handle_command_line(self, command_line) -> int:
+        if self.windows_opened == 0:
+            self.activate()  # the first window, configured by cli.main
+            return 0
+        from .cli import build_parser  # imported here: cli imports this module
+
+        try:
+            args = build_parser().parse_args(command_line.get_arguments()[1:])
+        except SystemExit:
+            report_error(command_line, "hacker-terminal: opções inválidas para uma nova janela\n")
+            return 2
+        if args.execute is not None and not args.execute:
+            report_error(command_line, "hacker-terminal: -e/--execute requer um comando\n")
+            return 2
+        if args.working_directory:
+            directory = Path(args.working_directory).expanduser()
+            if not directory.is_absolute():
+                directory = Path(command_line.get_cwd() or Path.home()) / directory
+            directory = directory.resolve()
+            if not directory.is_dir():
+                report_error(command_line, f"hacker-terminal: diretório inicial inexistente: {directory}\n")
+                return 2
+        else:
+            directory = self.profile_manager.working_directory(self.config.preferences.profile)
+        config = AppConfig(self.config.preferences, tuple(args.execute or ()), directory)
+        # Later windows start fresh: the saved tabs already came back in the first.
+        self.open_window(config, restore=False, boot=False)
+        return 0
+
+    def open_window(self, config: AppConfig, restore: bool = True, boot: bool | None = None) -> "HackerTerminal":
+        window = HackerTerminal(
+            self, config, self.store, self.action_store, self.session_store,
+            self.theme_manager, self.profile_manager, self.css_provider,
+            dropdown=self.dropdown, restore=restore, boot=boot,
+        )
+        self.windows_opened += 1
+        if self.dropdown:
+            window.toggle_dropdown()
+        else:
+            window.present()
+        return window
+
     def do_shutdown(self) -> None:
+        if self.open_server is not None:
+            self.open_server.stop()
         if KeySoundEngine._instance is not None:
             KeySoundEngine._instance.shutdown()
         Gtk.Application.do_shutdown(self)
@@ -3428,18 +3550,4 @@ class HackerTerminalApp(Gtk.Application):
             if existing is not None:
                 existing.toggle_dropdown()
                 return
-        window = HackerTerminal(
-            self,
-            self.config,
-            self.store,
-            self.action_store,
-            self.session_store,
-            self.theme_manager,
-            self.profile_manager,
-            self.css_provider,
-            dropdown=self.dropdown,
-        )
-        if self.dropdown:
-            window.toggle_dropdown()
-        else:
-            window.present()
+        self.open_window(self.config, restore=self.windows_opened == 0)

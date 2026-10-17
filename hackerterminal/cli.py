@@ -11,6 +11,7 @@ from .actions import ActionStore
 from .config import AppConfig, ConfigStore, Preferences, env_enabled
 from .constants import APP_NAME, VERSION
 from .fonts import choose_font
+from .launcher import separate_requested
 from .logs import log_path, setup_logging
 from .profiles import ProfileManager
 from .runtime import Gdk, Gtk, Vte
@@ -37,6 +38,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-effects", action="store_true", help="desativa chuva digital e scanlines")
     parser.add_argument("--no-sound", action="store_true", help="desativa os efeitos sonoros")
     parser.add_argument("--no-panel", action="store_true", help="inicia com o painel lateral oculto")
+    parser.add_argument(
+        "--separate",
+        action="store_true",
+        help="abre a janela num processo próprio (por padrão as janelas compartilham um processo)",
+    )
     parser.add_argument(
         "--dropdown",
         action="store_true",
@@ -143,6 +149,14 @@ def main(argv: list[str] | None = None) -> int:
     preferences.effects = preferences.effects and not args.no_effects and env_enabled("HACKER_TERMINAL_EFFECTS")
     preferences.sound = preferences.sound and not args.no_sound and env_enabled("HACKER_TERMINAL_SOUND")
     preferences.panel_visible = preferences.panel_visible and not args.no_panel
+    # Options that change a window's look need their own process: the theme
+    # CSS applies to every window of a process.
+    separate = (
+        args.separate or separate_requested() or any((
+            args.theme, args.profile, args.font, args.font_size is not None,
+            args.no_effects, args.no_sound, args.no_panel,
+        ))
+    )
     if args.dropdown:
         # Pops up instantly and keeps its own tabs, apart from the main window.
         preferences.boot = False
@@ -178,4 +192,7 @@ def main(argv: list[str] | None = None) -> int:
         profiles,
         provider,
         dropdown=args.dropdown,
-    ).run([sys.argv[0]])
+        separate=separate,
+    # Only the shared instance takes a command line; the others would read
+    # leftover arguments as files to open and quit.
+    ).run([sys.argv[0], *(sys.argv[1:] if argv is None else argv)] if not (separate or args.dropdown) else [sys.argv[0]])

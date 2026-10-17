@@ -9,7 +9,7 @@ import tempfile
 import wave
 from pathlib import Path
 
-from .runtime import Gst
+from .runtime import load_gst
 
 
 def make_tone(path: Path, notes: list[tuple[float, float]], volume: float = 0.18) -> Path | None:
@@ -45,16 +45,28 @@ def make_tone(path: Path, notes: list[tuple[float, float]], volume: float = 0.18
 
 
 class SoundPlayer:
+    """Plays a short sound; GStreamer is set up only when it first plays."""
+
     def __init__(self, path: Path | None, volume: float) -> None:
+        self.path = path
+        self.volume = volume
         self.player = None
-        if Gst is not None and path is not None:
+        self.prepared = False
+
+    def prepare(self) -> None:
+        self.prepared = True
+        Gst = load_gst()
+        if Gst is not None and self.path is not None:
             Gst.init(None)
             self.player = Gst.ElementFactory.make("playbin", None)
             if self.player:
-                self.player.set_property("uri", Gst.filename_to_uri(str(path)))
-                self.player.set_property("volume", volume)
+                self.player.set_property("uri", Gst.filename_to_uri(str(self.path)))
+                self.player.set_property("volume", self.volume)
 
     def play(self) -> None:
+        if not self.prepared:
+            self.prepare()
         if self.player is not None:
+            Gst = load_gst()
             self.player.set_state(Gst.State.NULL)
             self.player.set_state(Gst.State.PLAYING)

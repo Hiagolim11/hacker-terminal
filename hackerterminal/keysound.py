@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from .runtime import Gdk, GLib, Gst
+from .runtime import Gdk, GLib, load_gst
 
 LOGGER = logging.getLogger(__name__)
 RATE = 48_000
@@ -304,6 +304,7 @@ class SoundPack:
 
 def decode_audio(path: Path) -> Samples:
     """Decode any GStreamer-supported file to 48 kHz mono 16-bit PCM."""
+    Gst = load_gst()
     if Gst is None:
         raise PackError("GStreamer não está disponível")
     Gst.init(None)
@@ -475,6 +476,7 @@ def key_size(keyval: int) -> str:
 
 
 def _make_sink() -> object | None:
+    Gst = load_gst()
     preferred = os.environ.get("HACKER_TERMINAL_AUDIO_SINK")
     for name in ([preferred] if preferred else []) + ["pulsesink", "pipewiresink", "autoaudiosink"]:
         sink = Gst.ElementFactory.make(name, None)
@@ -521,6 +523,7 @@ class _Mixer:
     """
 
     def __init__(self) -> None:
+        Gst = load_gst()
         self.pipeline = Gst.Pipeline.new(None)
         self.source = Gst.ElementFactory.make("appsrc", None)
         convert = Gst.ElementFactory.make("audioconvert", None)
@@ -589,6 +592,7 @@ class _Mixer:
         return array.array("h", (32_767 if v > 32_767 else -32_768 if v < -32_768 else v for v in mixed)).tobytes()
 
     def on_need_data(self, source, _length) -> None:
+        Gst = load_gst()
         if self.stopped:
             return
         data = self.next_block()
@@ -602,10 +606,12 @@ class _Mixer:
         source.emit("push-buffer", buffer)
 
     def set_playing(self, playing: bool) -> None:
+        Gst = load_gst()
         # PAUSED corks the stream so PipeWire can suspend the audio device.
         self.pipeline.set_state(Gst.State.PLAYING if playing else Gst.State.PAUSED)
 
     def stop(self) -> None:
+        Gst = load_gst()
         if self.stopped:
             return
         self.stopped = True
@@ -640,9 +646,11 @@ class KeySoundEngine:
         self.idle_source = 0
 
     def available(self) -> bool:
+        Gst = load_gst()
         return Gst is not None and not self.failed
 
     def _ensure_output(self) -> bool:
+        Gst = load_gst()
         if self.mixer is not None or self.failed:
             return self.mixer is not None
         if Gst is None:

@@ -61,8 +61,9 @@ def main() -> int:
     config = AppConfig(preferences, (), root)
     provider = Gtk.CssProvider()
     provider.load_from_data(themes.get(preferences.theme).css())
+    # Separate: never negotiate the single instance on the user's session bus.
     application = HackerTerminalApp(
-        config, store, action_store, session_store, themes, profiles, provider
+        config, store, action_store, session_store, themes, profiles, provider, separate=True
     )
     application.register(None)
     boot = BootScreen(SoundPlayer(None, 0), lambda: False)
@@ -460,6 +461,34 @@ def main() -> int:
             if ssh_pane.theme_override is not red or other.theme_override is not None:
                 raise AssertionError("the SSH theme leaked to other panes or was lost")
             window.close_page(window.frame_for_pane(ssh_pane), force=True)
+
+            from unittest.mock import patch as mock_patch
+
+            # A second window of the same process: fresh tabs, shared ht-open
+            # socket routed to the pane's own window, preferences applied to both.
+            second_window = application.open_window(AppConfig(preferences, (), root), restore=False, boot=False)
+            if second_window.saved_session is not None or second_window.stack.get_visible_child_name() != "terminal":
+                raise AssertionError("a later window restored the session or showed the boot screen")
+            if second_window.open_socket != window.open_socket:
+                raise AssertionError("windows of one process should share the ht-open socket")
+            routed = []
+            with mock_patch.object(type(second_window), "open_file_from_pane", lambda w, path, pane_id: routed.append((w, pane_id))):
+                second_pane = second_window.get_active_terminal()
+                application.route_open(Path("/tmp/x.png"), second_pane.pane_id)
+                application.route_open(Path("/tmp/x.png"), window.get_active_terminal().pane_id)
+            if routed != [(second_window, second_pane.pane_id), (window, window.get_active_terminal().pane_id)]:
+                raise AssertionError(f"ht-open went to the wrong window: {routed}")
+            previous_theme = preferences.theme
+            preferences.theme = "paper-light"
+            window.preferences_changed()
+            if second_window.active_theme.identifier != "paper-light":
+                raise AssertionError("a preference change did not reach the other window")
+            preferences.theme = previous_theme
+            window.preferences_changed()
+            second_window.closing_window = True
+            for pane in second_window.terminals():
+                pane.prepare_close()
+            second_window.destroy()
 
             # Drop-down window: undecorated, top of the work area, toggles.
             dropdown = HackerTerminal(

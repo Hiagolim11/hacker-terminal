@@ -38,10 +38,20 @@ try:
 except (ImportError, ValueError):
     GdkX11 = None
 
-try:
-    gi.require_version("Gst", "1.0")
-    from gi.repository import Gst
-except (ImportError, ValueError):
-    Gst = None
+_gst = False
 
-__all__ = ["HAS_CAIRO", "Atk", "Gdk", "GdkX11", "Gio", "GLib", "Gst", "Gtk", "Pango", "PangoCairo", "Vte"]
+
+def load_gst():
+    """GStreamer, imported on first use (sound off: never, saving ~130 ms)."""
+    global _gst
+    if _gst is False:
+        try:
+            gi.require_version("Gst", "1.0")
+            from gi.repository import Gst as module
+        except (ImportError, ValueError):
+            module = None
+        _gst = module
+    return _gst
+
+
+__all__ = ["load_gst", "HAS_CAIRO", "Atk", "Gdk", "GdkX11", "Gio", "GLib", "Gtk", "Pango", "PangoCairo", "Vte"]

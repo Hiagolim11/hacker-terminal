@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shlex
 import subprocess
+import sys
 import array
 import json
 import os
@@ -676,7 +677,8 @@ class KeySoundTests(unittest.TestCase):
     def test_engine_keeps_playing_after_silence(self) -> None:
         """Regression: each output stream used to play once and then go mute."""
         from hackerterminal.keysound import KeySoundEngine
-        from hackerterminal.runtime import GLib, Gst
+        from hackerterminal.runtime import GLib, load_gst
+        Gst = load_gst()
         engine = KeySoundEngine()
         loop = GLib.MainLoop()
         engine.on_loaded.append(loop.quit)
@@ -738,7 +740,8 @@ class KeySoundTests(unittest.TestCase):
 
     def test_mixer_overlaps_and_clips_safely(self) -> None:
         from hackerterminal import keysound
-        from hackerterminal.runtime import Gst
+        from hackerterminal.runtime import load_gst
+        Gst = load_gst()
         Gst.init(None)
         mixer = keysound._Mixer()
         try:
@@ -1491,3 +1494,17 @@ class SSHAccessTests(unittest.TestCase):
             self.assertIsNone(passwords.lookup("x"))
             self.assertFalse(passwords.store("x", "X", "senha"))
             self.assertFalse(passwords.forget("x"))
+
+
+class LazyStartupTests(unittest.TestCase):
+    def test_gstreamer_is_not_loaded_until_a_sound_plays(self) -> None:
+        code = (
+            "import sys\n"
+            "import hackerterminal.ui, hackerterminal.keysound, hackerterminal.audio\n"
+            "from hackerterminal.audio import SoundPlayer\n"
+            "player = SoundPlayer(None, 0.3)\n"
+            "print('gi.repository.Gst' in sys.modules)\n"
+        )
+        result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True,
+                                cwd=Path(__file__).resolve().parent.parent)
+        self.assertEqual(result.stdout.strip(), "False")
