@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hacker Terminal</title>
+<meta name="description" content="Terminal para sistemas Linux com 22 temas, integração com o shell, terminal suspenso no F12, conexões SSH e som de teclado mecânico. Grátis e de código aberto.">
+<meta property="og:title" content="Hacker Terminal">
+<meta property="og:description" content="Terminal para sistemas Linux com 22 temas, integração com o shell, terminal suspenso e conexões SSH.">
+<meta property="og:image" content="https://hiagolim11.github.io/hacker-terminal/screenshots/hero.png">
+<meta name="theme-color" content="#f7f6f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141413" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23111'/%3E%3Cpath d='M9 11l6 5-6 5' fill='none' stroke='%23fff' stroke-width='3'/%3E%3Cpath d='M17 22h7' stroke='%23fff' stroke-width='3'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&family=Newsreader:opsz,wght@6..72,400..600&display=swap" rel="stylesheet">
+<style>
+/* Layout: one calm column (max 1080px) of document-like sections; the product shot and a
+   bento of six capabilities carry the page; colour only where it means something. */
+:root {
+  color-scheme: light;
+  --bg: #f7f6f3;           /* warm bone canvas */
+  --surface: #ffffff;
+  --sunken: #efede8;
+  --ink: #1d1f20;
+  --muted: #6b6a66;
+  --line: #e6e4df;
+  --button: #111111;
+  --button-ink: #ffffff;
+  --button-hover: #333333;
+  --kbd: #f2f1ed;
+  --red-bg: #fdebec;   --red: #9f2f2d;
+  --blue-bg: #e1f3fe;  --blue: #1f6c9f;
+  --green-bg: #edf3ec; --green: #346538;
+  --yellow-bg: #fbf3db; --yellow: #956400;
+  --serif: "Newsreader", "Iowan Old Style", Georgia, serif;
+  --sans: "Geist", "Helvetica Neue", Arial, sans-serif;
+  --mono: "Geist Mono", "JetBrains Mono", "DejaVu Sans Mono", monospace;
+  --radius: 10px;
+  --gutter-l: max(20px, env(safe-area-inset-left, 0px));
+  --gutter-r: max(20px, env(safe-area-inset-right, 0px));
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #141413; --surface: #1c1c1a; --sunken: #232321; --ink: #ecebe7; --muted: #a3a19b;
+    --line: #2f2e2b; --button: #ecebe7; --button-ink: #141413; --button-hover: #ffffff; --kbd: #262624;
+    --red-bg: #3a1f1f;   --red: #f2a7a5;
+    --blue-bg: #17303f;  --blue: #9fd2f2;
+    --green-bg: #1f2e21; --green: #a9d1ab;
+    --yellow-bg: #362d14; --yellow: #ecc96b;
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 17px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+img { max-width: 100%; height: auto; display: block; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 4px; }
+::selection { background: var(--yellow-bg); color: var(--ink); }
+.container { max-width: 1080px; margin: 0 auto; padding-left: var(--gutter-l); padding-right: var(--gutter-r); }
+h1, h2, h3 { margin: 0; font-weight: 500; text-wrap: balance; }
+p { margin: 0; }
+.muted { color: var(--muted); }
+code, kbd, pre { font-family: var(--mono); }
+code { font-size: 0.9em; background: var(--sunken); padding: 0.1em 0.35em; border-radius: 4px; }
+kbd { font-size: 0.78em; background: var(--kbd); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0.1em 0.45em; white-space: nowrap; }
+
+/* nav */
+.nav { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: saturate(140%) blur(8px); -webkit-backdrop-filter: saturate(140%) blur(8px); border-bottom: 1px solid transparent; transition: border-color 200ms; }
+.nav.scrolled { border-bottom-color: var(--line); }
+.nav-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 60px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 600; text-decoration: none; letter-spacing: -0.01em; }
+.brand svg { width: 24px; height: 24px; flex: none; }
+.nav-links { display: flex; align-items: center; gap: 28px; font-size: 15px; }
+.nav-links a { text-decoration: none; color: var(--muted); transition: color 150ms; }
+.nav-links a:hover { color: var(--ink); }
+.button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 18px;
+  background: var(--button); color: var(--button-ink); border: 0; border-radius: 6px; font: 500 15px/1 var(--sans);
+  text-decoration: none; cursor: pointer; transition: background-color 150ms, transform 120ms; }
+.button:hover { background: var(--button-hover); }
+.button:active { transform: scale(0.98); }
+.button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+.button.ghost:hover { background: var(--surface); }
+.nav-links a.button { min-height: 38px; padding: 0 14px; color: var(--button-ink); }
+.nav-links a.button:hover { color: var(--button-ink); }
+
+/* hero */
+.hero { padding-block: clamp(56px, 10vw, 120px) clamp(40px, 6vw, 72px); }
+.hero h1 { font-family: var(--serif); font-weight: 400; font-size: clamp(2.6rem, 1.4rem + 5vw, 5rem); line-height: 1.04; letter-spacing: -0.03em; max-width: 15ch; }
+.hero-lead { font-size: clamp(1.05rem, 1rem + 0.4vw, 1.25rem); color: var(--muted); max-width: 52ch; margin-top: 24px; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+.hero-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
+.tag { display: inline-flex; align-items: center; min-height: 26px; padding: 0 10px; border-radius: 9999px; font-size: 12px;
+  font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; }
+.tag.green { background: var(--green-bg); color: var(--green); }
+.tag.blue { background: var(--blue-bg); color: var(--blue); }
+.tag.yellow { background: var(--yellow-bg); color: var(--yellow); }
+.tag.red { background: var(--red-bg); color: var(--red); }
+.shot { margin-top: clamp(40px, 6vw, 64px); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #0d0f10; }
+.shot img { width: 100%; }
+
+/* sections */
+section { padding-block: clamp(72px, 11vw, 128px) 0; }
+.section-head { display: grid; gap: 12px; max-width: 640px; margin-bottom: 40px; }
+.section-head h2 { font-family: var(--serif); font-weight: 400; font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem); line-height: 1.08; letter-spacing: -0.02em; }
+
+/* bento */
+.bento { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: clamp(22px, 3vw, 32px);
+  display: flex; flex-direction: column; gap: 12px; min-width: 0; transition: box-shadow 200ms, transform 200ms var(--ease); }
+.card:hover { box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04); }
+.card h3 { font-size: 1.15rem; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; }
+.card p { color: var(--muted); }
+.card .figure { margin-top: auto; padding-top: 8px; }
+.card .figure img { border-radius: 8px; border: 1px solid var(--line); }
+.span-4 { grid-column: span 4; }
+.span-3 { grid-column: span 3; }
+.span-2 { grid-column: span 2; }
+.icon { width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center; flex: none; }
+.icon svg { width: 20px; height: 20px; }
+.icon.green { background: var(--green-bg); color: var(--green); }
+.icon.blue { background: var(--blue-bg); color: var(--blue); }
+.icon.yellow { background: var(--yellow-bg); color: var(--yellow); }
+.icon.red { background: var(--red-bg); color: var(--red); }
+
+/* a tiny real terminal fragment for the integration card */
+.mini-term { background: #040806; color: #c8f7d9; border-radius: 8px; padding: 14px 16px 14px 22px; font: 13px/1.6 var(--mono); }
+.mini-term p { white-space: pre-wrap; overflow-wrap: anywhere; position: relative; }
+.mini-term .fail::before, .mini-term .ok::before { content: ""; position: absolute; left: -11px; top: 0.25em; bottom: 0.25em; width: 3px; border-radius: 2px; }
+.mini-term .fail::before { background: #ff4f6d; }
+.mini-term .ok::before { background: #39ff88; opacity: 0.55; }
+.mini-term .err { color: #ff8aa0; }
+.mini-term .bar { margin-top: 10px; padding-top: 8px; border-top: 1px solid #17331f; display: flex; justify-content: space-between; color: #6fa585; font-size: 12px; }
+.mini-term .bar b { color: #ff4f6d; font-weight: 600; }
+
+.swatches { display: grid; gap: 8px; margin-top: auto; padding-top: 8px; }
+.swatch { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; }
+.swatch span { font-size: 14px; font-weight: 500; }
+.swatch .dots { display: flex; gap: 4px; }
+.swatch .dots i { width: 12px; height: 12px; border-radius: 3px; display: block; }
+
+.switches { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; padding-top: 8px; }
+.switch { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px; border: 1px solid var(--line);
+  border-radius: 6px; background: var(--bg); color: var(--ink); font: 500 14px/1 var(--sans); cursor: pointer; transition: background-color 150ms, transform 120ms; }
+.switch:hover { background: var(--sunken); }
+.switch:active { transform: scale(0.98); }
+.switch i { width: 10px; height: 10px; border-radius: 50%; }
+.switch[aria-pressed="true"] { background: var(--button); color: var(--button-ink); border-color: var(--button); }
+
+/* themes */
+.themes-shot { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #444; }
+.theme-list { display: flex; flex-wrap: wrap; gap: 8px 6px; margin-top: 20px; font-size: 14px; color: var(--muted); }
+.theme-list span:not(:last-child)::after { content: ","; }
+
+/* shortcuts */
+.shortcuts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 48px; }
+.shortcut { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.shortcut span { min-width: 0; }
+.shortcut kbd { font-size: 13px; }
+
+/* install */
+.install { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 48px; align-items: start; }
+.steps { display: grid; gap: 20px; min-width: 0; }
+.steps ol { margin: 0; padding-left: 1.2em; display: grid; gap: 14px; color: var(--muted); }
+.steps li::marker { color: var(--ink); font-weight: 600; }
+.steps li strong { color: var(--ink); font-weight: 600; }
+.code { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overflow: hidden; min-width: 0; }
+.code pre { margin: 0; padding: 14px 16px; overflow-x: auto; flex: 1; min-width: 0; font-size: 14px; line-height: 1.5; }
+.code button { border: 0; border-left: 1px solid var(--line); background: var(--bg); color: var(--ink); padding: 0 16px; font: 500 13px var(--sans); cursor: pointer; transition: background-color 150ms; }
+.code button:hover { background: var(--sunken); }
+
+/* faq */
+.faq { border-top: 1px solid var(--line); }
+.faq details { border-bottom: 1px solid var(--line); }
+.faq summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 20px 0; font-weight: 500; font-size: 1.05rem; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: "+"; font: 400 1.4rem/1 var(--mono); color: var(--muted); flex: none; }
+.faq details[open] summary::after { content: "\2212"; }
+.faq details p { padding: 0 0 22px; color: var(--muted); max-width: 64ch; }
+
+/* footer */
+footer { padding-block: clamp(72px, 11vw, 128px) 40px; }
+.footer-cta { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 24px; padding-bottom: 40px; border-bottom: 1px solid var(--line); }
+.footer-cta h2 { font-family: var(--serif); font-weight: 400; font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem); line-height: 1.08; letter-spacing: -0.02em; max-width: 16ch; }
+.footer-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 24px; padding-top: 24px; font-size: 14px; color: var(--muted); }
+.footer-meta nav { display: flex; flex-wrap: wrap; gap: 20px; }
+.footer-meta a { text-decoration: none; }
+.footer-meta a:hover { color: var(--ink); }
+
+/* motion: content rests visible; blocks rise gently once as they arrive */
+@media (prefers-reduced-motion: no-preference) {
+  .reveal.pending { opacity: 0; transform: translateY(12px); }
+  .reveal { transition: opacity 600ms var(--ease), transform 600ms var(--ease); transition-delay: calc(var(--i, 0) * 70ms); }
+}
+
+/* responsive */
+@media (max-width: 900px) {
+  .bento { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .span-4, .span-3 { grid-column: span 2; }
+  .span-2 { grid-column: span 1; }
+  .install { grid-template-columns: 1fr; gap: 28px; }
+}
+@media (max-width: 640px) {
+  body { font-size: 16px; }
+  .nav-links a:not(.button) { display: none; }
+  .bento { grid-template-columns: 1fr; }
+  .span-4, .span-3, .span-2 { grid-column: auto; }
+  .shortcuts { grid-template-columns: 1fr; }
+  .hero-actions .button { flex: 1 1 auto; }
+  .footer-cta .button { width: 100%; }
+}
+</style>
+</head>
+<body>
+<header class="nav" id="nav">
+  <div class="container nav-inner">
+    <a class="brand" href="#">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="currentColor"/><path d="M9 11l6 5-6 5" fill="none" stroke="var(--bg)" stroke-width="3"/><path d="M17 22h7" stroke="var(--bg)" stroke-width="3"/></svg>
+      Hacker Terminal
+    </a>
+    <nav class="nav-links" aria-label="Principal">
+      <a href="#recursos">Recursos</a>
+      <a href="#temas">Temas</a>
+      <a href="#instalar">Instalar</a>
+      <a href="https://github.com/Hiagolim11/hacker-terminal">GitHub</a>
+      <a class="button" href="https://github.com/Hiagolim11/hacker-terminal/releases/latest">Baixar</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="container hero">
+    <h1 class="reveal">Um terminal com cara própria.</h1>
+    <p class="hero-lead reveal">Para sistemas Linux, com 22 temas, integração com o shell, terminal suspenso no F12, conexões SSH e o som de um teclado mecânico. Grátis e de código aberto.</p>
+    <div class="hero-actions reveal">
+      <a class="button" href="https://github.com/Hiagolim11/hacker-terminal/releases/latest">Baixar a versão __VERSION__</a>
+      <a class="button ghost" href="https://github.com/Hiagolim11/hacker-terminal">Ver o código</a>
+    </div>
+    <div class="hero-meta reveal" aria-label="Resumo">
+      <span class="tag green">Licença MIT</span>
+      <span class="tag blue">GTK 3 + VTE</span>
+      <span class="tag yellow">Em português</span>
+    </div>
+    <div class="shot reveal">
+      <img src="screenshots/hero.png" width="1280" height="760" alt="Janela do Hacker Terminal com painel de ações rápidas, prompt colorido e barra de status">
+    </div>
+  </div>
+
+  <section id="recursos" aria-labelledby="recursos-title">
+    <div class="container">
+      <div class="section-head reveal">
+        <h2 id="recursos-title">Feito para o trabalho de todo dia.</h2>
+        <p class="muted">O que você usa a cada comando, sem precisar configurar nada.</p>
+      </div>
+      <div class="bento">
+        <article class="card span-4 reveal">
+          <div class="icon red" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M4 6l6 6-6 6M12 18h8"/></svg></div>
+          <h3>Ele sabe quando um comando falhou</h3>
+          <p>Cada comando ganha uma marca na margem, vermelha quando dá errado, e o código de saída aparece na barra. <kbd>Ctrl+Shift+↑</kbd> pula entre comandos e <kbd>Ctrl+Shift+L</kbd> copia só a saída do último.</p>
+          <div class="mini-term" aria-label="Exemplo: um grep que falha ganha a marca vermelha">
+            <p class="ok">hacker@lab:~$ ls</p>
+            <p>evidencias  notas.md  scan.sh</p>
+            <p class="fail">hacker@lab:~$ grep -r senha /etc/nao-existe</p>
+            <p class="err">grep: /etc/nao-existe: Arquivo ou diretório inexistente</p>
+            <div class="bar"><span>Zero Day · ~</span><b>SAÍDA 2</b></div>
+          </div>
+        </article>
+        <article class="card span-2 reveal">
+          <div class="icon blue" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg></div>
+          <h3>Histórico de todas as abas</h3>
+          <p><kbd>Ctrl+Shift+H</kbd> busca qualquer comando que você rodou, até de ontem, com resultado, duração e pasta. Só falhas, se quiser.</p>
+        </article>
+        <article class="card span-2 reveal">
+          <div class="icon yellow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M4 5h16M4 5v6h16V5M12 11v8M9 16l3 3 3-3"/></svg></div>
+          <h3>Desce no F12</h3>
+          <p>O terminal suspenso aparece no topo da tela com uma tecla e some com a mesma tecla, com as abas intactas.</p>
+        </article>
+        <article class="card span-2 reveal">
+          <div class="icon green" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div>
+          <h3>SSH sem decorar nada</h3>
+          <p>Conexões salvas, chave instalada com um clique ou senha no chaveiro do sistema. Produção abre num tema vermelho.</p>
+        </article>
+        <article class="card span-2 reveal">
+          <div class="icon blue" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16M3 12h9"/></svg></div>
+          <h3>Até 4 painéis por aba</h3>
+          <p>Divida a tela, dê nome a cada painel e digite em todos ao mesmo tempo com <kbd>Ctrl+Shift+I</kbd>.</p>
+        </article>
+        <article class="card span-3 reveal">
+          <div class="icon yellow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="3" y="7" width="18" height="12" rx="2"/><path d="M7 11h.01M11 11h.01M15 11h.01M7 15h10"/></svg></div>
+          <h3>Som de teclado mecânico</h3>
+          <p>Cada tecla toca o clique de um switch, sem atraso. Escolha o seu e ouça:</p>
+          <div class="switches" role="group" aria-label="Ouvir os switches">
+            <button class="switch" type="button" data-sound="audio/switch-red.mp3" aria-pressed="false"><i style="background:#d9473f"></i>Red</button>
+            <button class="switch" type="button" data-sound="audio/switch-brown.mp3" aria-pressed="false"><i style="background:#8a5a3b"></i>Brown</button>
+            <button class="switch" type="button" data-sound="audio/switch-blue.mp3" aria-pressed="false"><i style="background:#3f7fd9"></i>Blue</button>
+          </div>
+        </article>
+        <article class="card span-3 reveal">
+          <div class="icon green" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 15l5-4 4 3 3-2 6 4"/></svg></div>
+          <h3>Imagens e planilhas sem sair dele</h3>
+          <p><code>ht-open foto.png</code> abre numa aba ao lado; <code>ht-open --inline</code> desenha a imagem na própria saída. CSV, XLSX e ODS também.</p>
+          <div class="figure"><img src="screenshots/viewer-sheet.png" width="1280" height="760" loading="lazy" alt="Planilha XLSX aberta numa aba do visualizador do Hacker Terminal"></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="temas" aria-labelledby="temas-title">
+    <div class="container">
+      <div class="section-head reveal">
+        <h2 id="temas-title">22 temas, todos fáceis de ler.</h2>
+        <p class="muted">Do minimalista ao fósforo de tubo CRT. Cada tema passa no teste de contraste WCAG, e você ainda pode pôr uma imagem de fundo atrás do texto.</p>
+      </div>
+      <div class="bento">
+        <div class="card span-4 reveal" style="padding:0;overflow:hidden">
+          <img src="screenshots/modern-themes.png" width="1400" height="1018" loading="lazy" alt="Seis temas lado a lado: Zero Day, Neon Noir, Pôr do Sol Synth, Aurora, Grafite e Névoa">
+        </div>
+        <div class="card span-2 reveal">
+          <h3>Alguns favoritos</h3>
+          <div class="swatches">__SWATCHES__</div>
+        </div>
+      </div>
+      <p class="theme-list reveal" aria-label="Todos os temas">__THEME_LIST__</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="atalhos-title">
+    <div class="container">
+      <div class="section-head reveal">
+        <h2 id="atalhos-title">Tudo a um atalho de distância.</h2>
+        <p class="muted">Todos podem ser trocados em Preferências.</p>
+      </div>
+      <div class="shortcuts reveal">
+        <div class="shortcut"><span>Nova aba</span><kbd>Ctrl+Shift+T</kbd></div>
+        <div class="shortcut"><span>Histórico de comandos</span><kbd>Ctrl+Shift+H</kbd></div>
+        <div class="shortcut"><span>Dividir lado a lado</span><kbd>Ctrl+Shift+D</kbd></div>
+        <div class="shortcut"><span>Copiar saída do último comando</span><kbd>Ctrl+Shift+L</kbd></div>
+        <div class="shortcut"><span>Conexões SSH</span><kbd>Ctrl+Shift+S</kbd></div>
+        <div class="shortcut"><span>Paleta de comandos</span><kbd>Ctrl+Shift+P</kbd></div>
+        <div class="shortcut"><span>Digitar em todos os painéis</span><kbd>Ctrl+Shift+I</kbd></div>
+        <div class="shortcut"><span>Terminal suspenso</span><kbd>F12</kbd></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="instalar" aria-labelledby="instalar-title">
+    <div class="container install">
+      <div class="section-head reveal" style="margin:0">
+        <h2 id="instalar-title">Instale em um minuto.</h2>
+        <p class="muted">Para sistemas Linux.</p>
+      </div>
+      <div class="steps reveal">
+        <ol>
+          <li><strong>Baixe</strong> o arquivo <code>hacker-terminal___VERSION___all.deb</code> na <a href="https://github.com/Hiagolim11/hacker-terminal/releases/latest">página de versões</a>.</li>
+          <li><strong>Instale</strong> com o apt, que resolve as dependências sozinho:</li>
+        </ol>
+        <div class="code"><pre><code id="cmd">sudo apt install ./hacker-terminal___VERSION___all.deb</code></pre><button type="button" id="copy">Copiar</button></div>
+        <p class="muted">Prefere sem pacote? Clone o repositório e rode <code>./install.sh</code>, que instala só para a sua conta.</p>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="faq-title">
+    <div class="container">
+      <div class="section-head reveal">
+        <h2 id="faq-title">Perguntas frequentes</h2>
+      </div>
+      <div class="faq reveal">
+        <details><summary>É grátis?</summary><p>Sim. O Hacker Terminal é de código aberto, sob a licença MIT. O código está no GitHub.</p></details>
+        <details><summary>Funciona com o meu shell?</summary><p>Sim, ele abre o seu shell de sempre. A integração (marcas de comando, histórico, saltos) funciona com zsh e bash e é ligada sozinha; o resto vale para qualquer shell.</p></details>
+        <details><summary>Ele guarda minhas senhas SSH?</summary><p>Só se você pedir, e no chaveiro do sistema, nunca nos arquivos do terminal. O mais seguro é o botão de acesso por chave, que dispensa senha.</p></details>
+        <details><summary>Onde ficam as minhas configurações?</summary><p>Em <code>~/.config/hacker-terminal/</code>: preferências, temas, perfis, ações e conexões. O histórico de comandos fica em <code>~/.local/state/hacker-terminal/</code>, só no seu computador.</p></details>
+        <details><summary>Como atualizo?</summary><p>Baixe o novo <code>.deb</code> e instale com o mesmo comando do apt. Suas configurações continuam onde estão.</p></details>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="container">
+    <div class="footer-cta reveal">
+      <h2>Pronto para testar?</h2>
+      <a class="button" href="https://github.com/Hiagolim11/hacker-terminal/releases/latest">Baixar a versão __VERSION__</a>
+    </div>
+    <div class="footer-meta">
+      <span>Hacker Terminal · Licença MIT · Imagens capturadas do próprio app</span>
+      <nav aria-label="Rodapé">
+        <a href="https://github.com/Hiagolim11/hacker-terminal">GitHub</a>
+        <a href="https://github.com/Hiagolim11/hacker-terminal/blob/main/CHANGELOG.md">Novidades</a>
+        <a href="https://github.com/Hiagolim11/hacker-terminal/issues">Relatar um problema</a>
+      </nav>
+    </div>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const nav = document.getElementById("nav");
+  const onScroll = () => nav.classList.toggle("scrolled", window.scrollY > 8);
+  onScroll(); window.addEventListener("scroll", onScroll, { passive: true });
+
+  /* switch samples: real recordings of the app's sound engine */
+  let playing = null;
+  document.querySelectorAll(".switch").forEach((button) => {
+    const audio = new Audio(button.dataset.sound);
+    audio.preload = "none";
+    audio.addEventListener("ended", () => button.setAttribute("aria-pressed", "false"));
+    button.addEventListener("click", () => {
+      if (playing && playing !== audio) { playing.pause(); playing.currentTime = 0; }
+      document.querySelectorAll(".switch").forEach((b) => b.setAttribute("aria-pressed", "false"));
+      if (playing === audio && !audio.paused) { audio.pause(); audio.currentTime = 0; playing = null; return; }
+      playing = audio; audio.currentTime = 0;
+      audio.play().then(() => button.setAttribute("aria-pressed", "true")).catch(() => {});
+    });
+  });
+
+  /* copy the install command */
+  const copy = document.getElementById("copy");
+  copy.addEventListener("click", () => {
+    const text = document.getElementById("cmd").textContent;
+    const done = (label) => { copy.textContent = label; setTimeout(() => (copy.textContent = "Copiar"), 1600); };
+    const select = () => { const r = document.createRange(); r.selectNodeContents(document.getElementById("cmd")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); done("Selecionado"); };
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => done("Copiado"), select); else select();
+  });
+
+  /* gentle reveal; without the observer (or with reduced motion) everything just shows */
+  if ("IntersectionObserver" in window && matchMedia("(prefers-reduced-motion: no-preference)").matches) {
+    const items = [...document.querySelectorAll(".reveal")];
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) { entry.target.classList.remove("pending"); observer.unobserve(entry.target); }
+      });
+    }, { rootMargin: "0px 0px -8% 0px" });
+    items.forEach((el) => {
+      const siblings = [...el.parentElement.children].filter((c) => c.classList.contains("reveal"));
+      el.style.setProperty("--i", Math.min(siblings.indexOf(el), 6));
+      if (el.getBoundingClientRect().top > innerHeight) { el.classList.add("pending"); observer.observe(el); }
+    });
+  }
+})();
+</script>
+</body>
+</html>
