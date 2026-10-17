@@ -9,6 +9,7 @@
 GTK 3 · VTE · Python · sem Electron, sem navegador, sem telemetria
 
 [![CI](https://github.com/Hiagolim11/hacker-terminal/actions/workflows/ci.yml/badge.svg)](https://github.com/Hiagolim11/hacker-terminal/actions/workflows/ci.yml)
+[![Site](https://img.shields.io/badge/site-hiagolim11.github.io-111111)](https://hiagolim11.github.io/hacker-terminal/)
 [![Release](https://img.shields.io/github/v/release/Hiagolim11/hacker-terminal?color=29ff9a&label=vers%C3%A3o)](https://github.com/Hiagolim11/hacker-terminal/releases/latest)
 [![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-blue)](LICENSE)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776ab?logo=python&logoColor=white)
