@@ -60,7 +60,7 @@ GTK 3 · VTE · Python · sem Electron, sem navegador, sem telemetria
 
 O **Hacker Terminal** é um emulador de terminal **de verdade** — não uma simulação. Ele roda o seu shell de login (`zsh`, `bash`, `fish`…) dentro de um PTY usando o **VTE**, o mesmo motor do GNOME Terminal e do Tilix. Por isso `vim`, `tmux`, `htop`, prompts Powerline, cores de 24 bits e programas de tela cheia funcionam exatamente como esperado.
 
-Por cima desse motor maduro, ele adiciona uma camada pensada para quem passa o dia no terminal: abas e painéis divididos, paleta de comandos, temas editáveis, perfis, atalhos remapeáveis, ações rápidas, som de teclado mecânico de baixa latência e, se você quiser, a estética retrô completa — boot animado, chuva digital e scanlines.
+Por cima desse motor maduro, ele adiciona uma camada pensada para quem passa o dia no terminal: abas e painéis divididos, paleta de comandos, temas editáveis, perfis, atalhos remapeáveis, ações rápidas, som de teclado mecânico de baixa latência e, se você quiser, a estética retrô completa, com chuva digital, scanlines e temas de tubo CRT.
 
 > [!NOTE]
 > O padrão é **sóbrio** (tema Minimal Dark, sem animações nem som). Toda a parte "hacker" é opcional e fica a um clique no perfil **Retro Hacker**.
@@ -94,9 +94,11 @@ Por cima desse motor maduro, ele adiciona uma camada pensada para quem passa o d
 - **Editor visual de temas** (interface, terminal e 16 cores ANSI)
 - Detecção automática de **Nerd Fonts** e glifos Powerline
 - Cursor, negrito e opacidade configuráveis
-- Layout responsivo: o painel lateral se recolhe em janelas estreitas
+- Interface minimalista: o terminal ocupa a janela inteira, o cabeçalho tem só quatro botões e o painel lateral fica guardado até você chamar (`Ctrl+Shift+B`)
+- Layout responsivo: em janelas estreitas o painel se recolhe e o botão o mostra por cima
 - Visual de **monitor CRT**: brilho do fósforo, curvatura, vinheta, ruído e cintilação
-- Efeitos retrô opcionais: boot, chuva digital, scanlines
+- Efeitos retrô opcionais: chuva digital e scanlines
+- Abertura rápida: o shell fica pronto em ~0,8 s, e novas janelas abrem em ~0,4 s
 
 </td>
 </tr>
@@ -241,7 +243,7 @@ hacker-terminal --diagnose
 ```
 
 ```text
-Hacker Terminal 0.18.0
+Hacker Terminal 0.19.0
 GTK: 3.24.52
 VTE: 0.84.1
 Fonte selecionada: JetBrainsMono Nerd Font
@@ -256,7 +258,7 @@ Shell: /usr/bin/zsh
 ## 🚀 Primeiros passos
 
 1. **Abra** pelo menu de aplicativos ou com `hacker-terminal`.
-2. **Escolha um perfil** em `Ctrl+,` → *Geral*: *Desenvolvimento* (sóbrio), *Foco* (sem painel) ou *Retro Hacker* (boot, chuva digital e scanlines).
+2. **Escolha um perfil** em `Ctrl+,` → *Geral*: *Desenvolvimento* (sóbrio), *Foco* (sem painel) ou *Retro Hacker* (chuva digital e scanlines).
 3. **Experimente a paleta** com `Ctrl+Shift+P` e digite `tema`, `perfil` ou `dividir`.
 4. **Divida a tela** com `Ctrl+Shift+D` e alterne entre os painéis com `Ctrl+Shift+O`.
 5. **Ligue o som do teclado** em `Ctrl+,` → *Som do teclado* e teste no campo “Digite aqui para ouvir…”.
@@ -299,7 +301,7 @@ Abra as **Preferências** com `Ctrl+,` (ou pelo ícone ⚙). Elas são organizad
 | Aba | O que você ajusta |
 | --- | --- |
 | **Geral** | Perfil, shell personalizado, restauração de sessão, painel lateral, colagem segura e aviso de bell |
-| **Aparência** | Tema (com editor), fonte, opacidade do fundo, animação de abertura e efeitos visuais |
+| **Aparência** | Tema (com editor), fonte, opacidade da janela, imagem de fundo e efeitos visuais |
 | **Terminal** | Formato e piscar do cursor, negrito com cores claras, copiar ao selecionar, histórico e rolagem |
 | **Som do teclado** | Switch, volume, som ao soltar a tecla, campo de teste e pacotes gravados |
 | **Atalhos** | Todas as combinações de teclas, com gravação por tecla e restauração |
@@ -447,7 +449,7 @@ Um perfil guarda um conjunto completo de preferências e pode ser trocado em um 
 | --- | --- | --- |
 | **Desenvolvimento** | Minimal Dark | Sóbrio, painel de ações visível, sem efeitos |
 | **Foco** | Ice Blue | Fonte maior, sem painel lateral |
-| **Retro Hacker** | Matrix Green | Boot animado, chuva digital e scanlines |
+| **Retro Hacker** | Matrix Green | Chuva digital, scanlines e painel de ações visível |
 | **Retrô CRT** | Fósforo Âmbar | Monitor de fósforo com brilho, curvatura e ruído, sem painel lateral |
 | *Seus perfis* | qualquer um | Tema, fonte, tamanho, shell, cursor, opacidade, efeitos, painel, **diretório inicial** e **ações rápidas próprias** |
 
@@ -474,7 +476,6 @@ font_size = 12
 shell = zsh
 cursor_shape = ibeam
 opacity = 92
-boot = false
 effects = true
 sound = true
 panel_visible = true
@@ -541,7 +542,7 @@ Identificadores disponíveis: `new_tab`, `close_pane`, `split_horizontal`, `spli
 
 ### Ações rápidas
 
-O painel lateral traz comandos de diagnóstico local (identidade, interfaces de rede, portas, rotas, processos, SSH, saúde do sistema). Em **Editar ações…** você adiciona, edita, remove e reordena — por exemplo `make test`, `docker ps` ou `git status` — e pode exigir **confirmação** antes de ações sensíveis (marcadas com ●). Todas as ações também aparecem na paleta de comandos.
+O painel lateral (`Ctrl+Shift+B` ou o botão ☰ no cabeçalho) traz comandos de diagnóstico local (identidade, interfaces de rede, portas, rotas, processos, SSH, saúde do sistema). Em **Editar ações…** você adiciona, edita, remove e reordena — por exemplo `make test`, `docker ps` ou `git status` — e pode exigir **confirmação** antes de ações sensíveis (marcadas com ●). Todas as ações também aparecem na paleta de comandos.
 
 Uma ação pode ter **campos**: escreva `nmap -sV {alvo}` ou `ping -c {vezes=4} {host}` (`=` define um valor padrão e torna o campo opcional). Ao executar, um formulário pede os valores e mostra o comando final; os últimos valores digitados são lembrados durante a sessão. Os valores entram protegidos por aspas, então `10.0.0.5; rm -rf ~` vira um único argumento e nunca é executado. Texto entre aspas simples (`awk '{print $1}'`) e `${VAR}` não são tratados como campos. Ações com campos aparecem com “…” no painel.
 
@@ -703,11 +704,10 @@ Os caminhos respeitam `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME` e `XD
 | `shell` | comando | *(login shell)* | Ex.: `fish` ou `bash --norc` |
 | `confirm_paste` | booleano | `true` | Confirma colagens perigosas |
 | `bell_notify` | booleano | `true` | Marca aba/janela no bell |
-| `panel_visible` | booleano | `true` | Painel de ações |
+| `panel_visible` | booleano | `false` | Painel de ações |
 | `restore_session` | booleano | `true` | Restaura abas ao abrir |
 | `notify_commands` | booleano | `true` | Avisa quando um comando longo termina |
 | `notify_after` | 3–3600 | `10` | Segundos para um comando ser considerado longo |
-| `boot` | booleano | `false` | Animação de abertura |
 | `effects` | booleano | `false` | Chuva digital e scanlines |
 | `sound` | booleano | `false` | Som do teclado |
 | `key_switch` | `red`, `brown`, `blue`, `pack:<pasta>` | `brown` | Som do switch |
@@ -723,7 +723,7 @@ Valores inválidos são normalizados para o padrão; seções desconhecidas são
 | Variável | Efeito |
 | --- | --- |
 | `HACKER_TERMINAL_FONT` | Força uma família de fonte |
-| `HACKER_TERMINAL_BOOT` / `_EFFECTS` / `_SOUND` | `0`, `false`, `no` ou `off` desligam o recurso |
+| `HACKER_TERMINAL_EFFECTS` / `_SOUND` | `0`, `false`, `no` ou `off` desligam o recurso |
 | `HACKER_TERMINAL_AUDIO_SINK` | Força um elemento de saída do GStreamer (ex.: `pipewiresink`, `fakesink`) |
 
 ---
@@ -741,7 +741,7 @@ hacker-terminal [opções] [-e COMANDO ...]
 | `--profile ID` / `--list-profiles` | Usa um perfil / lista os perfis |
 | `--theme ID` / `--list-themes` | Usa um tema / lista os temas |
 | `--font FAMÍLIA`, `--font-size N` | Fonte e tamanho só nesta janela |
-| `--no-boot`, `--no-effects`, `--no-sound`, `--no-panel` | Desliga recursos nesta janela |
+| `--no-effects`, `--no-sound`, `--no-panel` | Desliga recursos nesta janela |
 | `--list-shortcuts` | Lista os atalhos em uso |
 | `--diagnose` | Verifica dependências, fonte, tema, perfil e atalhos |
 | `--debug` | Mensagens detalhadas no terminal e no log |
@@ -781,7 +781,7 @@ A interface fica em dois pacotes. A janela (`window/`) é uma classe principal c
 | `window/main.py` | `HackerTerminal`: cabeçalho, abas, sessão, preferências, barra de status e fechamento |
 | `window/panes.py`, `commands.py`, `output.py` | Divisões e transmissão; avisos, saltos e histórico de comandos; salvar/gravar saída e renomear painéis |
 | `window/ssh.py`, `dropdown.py`, `viewer.py` | Abas SSH e acesso por chave; terminal suspenso; abas do visualizador |
-| `window/panel.py`, `boot.py` | Painel lateral de ações; animação de abertura |
+| `window/panel.py` | Painel lateral de ações rápidas |
 | `dialogs/` | Preferências, editores (atalhos, temas, perfis), ações e `{campos}`, SSH, histórico, paleta e utilitários comuns |
 | `terminal.py` | Painel VTE: spawn do shell, integração (marcas de prompt), pesquisa, links, colagem segura, bell, zoom |
 | `themes.py` | Carrega e valida temas, gera o CSS do GTK, contraste WCAG, salva temas personalizados |

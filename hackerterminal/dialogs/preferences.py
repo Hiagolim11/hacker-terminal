@@ -114,7 +114,7 @@ class PreferencesDialog(Gtk.Dialog):
         self.shell.set_placeholder_text("Automático ($SHELL, zsh ou bash)")
         self.confirm_paste = Gtk.Switch(active=preferences.confirm_paste)
         self.bell_notify = Gtk.Switch(active=preferences.bell_notify)
-        general.heading("PERFIL")
+        general.heading("Perfil")
         general.field("Perfil", self.profile)
         self.profile_note = general.hint("", column=1, width=1)
         profile_actions = Gtk.FlowBox()
@@ -133,12 +133,12 @@ class PreferencesDialog(Gtk.Dialog):
         for button in (save_profile, self.edit_profile_button, self.delete_profile_button):
             profile_actions.add(button)
         general.full(profile_actions, column=1, width=1)
-        general.heading("SESSÃO")
+        general.heading("Sessão")
         general.field("Shell", self.shell, "Comando do shell, com argumentos. Vazio usa o shell de login.")
         self.shell_status = general.hint("", column=1, width=1)
         general.field("Restaurar sessão", self.restore_session)
         general.field("Painel lateral", self.panel)
-        general.heading("SEGURANÇA E ALERTAS")
+        general.heading("Segurança e alertas")
         general.field(
             "Confirmar colagem perigosa",
             self.confirm_paste,
@@ -168,7 +168,7 @@ class PreferencesDialog(Gtk.Dialog):
         self.notify_after = Gtk.SpinButton.new_with_range(3, 3600, 1)
         self.notify_after.set_value(preferences.notify_after)
         general.field("Considerar longo a partir de (segundos)", self.notify_after)
-        general.heading("TERMINAL SUSPENSO")
+        general.heading("Terminal suspenso")
         self.dropdown_height = Gtk.SpinButton.new_with_range(25, 90, 5)
         self.dropdown_height.set_value(preferences.dropdown_height)
         general.field("Altura (% da tela)", self.dropdown_height)
@@ -250,10 +250,9 @@ class PreferencesDialog(Gtk.Dialog):
         self.opacity.set_value(preferences.opacity)
         self.opacity.set_value_pos(Gtk.PositionType.RIGHT)
         self.opacity.set_digits(0)
-        self.boot = Gtk.Switch(active=preferences.boot)
         self.effects = Gtk.Switch(active=preferences.effects)
         self.sound = Gtk.Switch(active=preferences.sound)
-        appearance.heading("TEMA")
+        appearance.heading("Tema")
         appearance.field("Tema", self.theme)
         appearance.full(theme_actions, column=1, width=1)
         suggestion = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -275,7 +274,7 @@ class PreferencesDialog(Gtk.Dialog):
             column=1,
             width=1,
         )
-        appearance.heading("IMAGEM DE FUNDO")
+        appearance.heading("Imagem de fundo")
         self.background_path = preferences.background_image
         self.background_chooser = Gtk.FileChooserButton(title="Escolher imagem de fundo", action=Gtk.FileChooserAction.OPEN)
         images = Gtk.FileFilter()
@@ -306,10 +305,8 @@ class PreferencesDialog(Gtk.Dialog):
             width=1,
         )
         self.update_background_controls()
-        appearance.heading("EFEITOS")
-        appearance.field("Animação de abertura", self.boot)
+        appearance.heading("Efeitos")
         appearance.field("Efeitos visuais", self.effects)
-        appearance.hint("A animação de abertura é aplicada na próxima janela.")
         self.pages.append_page(appearance, Gtk.Label(label="Aparência"))
 
         # --- Terminal
@@ -322,13 +319,13 @@ class PreferencesDialog(Gtk.Dialog):
         self.copy_on_select = Gtk.Switch(active=preferences.copy_on_select)
         self.scroll_on_output = Gtk.Switch(active=preferences.scroll_on_output)
         self.scroll_on_keystroke = Gtk.Switch(active=preferences.scroll_on_keystroke)
-        terminal.heading("CURSOR")
+        terminal.heading("Cursor")
         terminal.field("Formato", self.cursor_shape)
         terminal.field("Piscar", self.cursor_blink)
-        terminal.heading("TEXTO E SELEÇÃO")
+        terminal.heading("Texto e seleção")
         terminal.field("Negrito usa cores claras", self.bold_is_bright)
         terminal.field("Copiar ao selecionar", self.copy_on_select)
-        terminal.heading("ROLAGEM")
+        terminal.heading("Rolagem")
         terminal.field("Linhas do histórico", self.scrollback)
         terminal.field("Rolar ao receber saída", self.scroll_on_output)
         terminal.field("Rolar ao digitar", self.scroll_on_keystroke)
@@ -356,19 +353,19 @@ class PreferencesDialog(Gtk.Dialog):
         self.key_test.set_placeholder_text("Digite aqui para ouvir…")
         self.key_test.connect("key-press-event", self.on_key_test_press)
         self.key_test.connect("key-release-event", self.on_key_test_release)
-        sound_page.heading("SOM DO TECLADO")
+        sound_page.heading("Som do teclado")
         sound_page.field("Ativar", self.sound)
         sound_page.field("Switch", self.key_switch)
         self.key_status = sound_page.hint("", column=1, width=1)
         sound_page.field("Volume", self.key_volume)
         sound_page.field("Som ao soltar a tecla", self.key_release, "Toca o retorno da haste (top-out) ao soltar.")
-        sound_page.heading("TESTAR")
+        sound_page.heading("Testar")
         sound_page.full(self.key_test)
         sound_page.hint(
             "Os sons tocam na descida e na subida de cada tecla, sem trava entre teclas; "
             "segurar uma tecla não repete o som, como num teclado real."
         )
-        sound_page.heading("PACOTES GRAVADOS")
+        sound_page.heading("Pacotes gravados")
         sound_page.full(pack_actions)
         sound_page.hint(
             "Para o som exato de um teclado real, importe uma gravação: pacotes Mechvibes "
@@ -658,7 +655,6 @@ class PreferencesDialog(Gtk.Dialog):
             self.cursor_shape.set_active_id(profile.cursor_shape)
         if profile.opacity is not None:
             self.opacity.set_value(profile.opacity)
-        self.boot.set_active(profile.boot)
         self.effects.set_active(profile.effects)
         self.sound.set_active(profile.sound)
         self.panel.set_active(profile.panel_visible)
@@ -796,7 +792,6 @@ class PreferencesDialog(Gtk.Dialog):
         if size:
             target.font_size = size
         target.scrollback_lines = self.scrollback.get_value_as_int()
-        target.boot = self.boot.get_active()
         target.effects = self.effects.get_active()
         target.sound = self.sound.get_active()
         target.key_switch = self.key_switch.get_active_id() or "brown"

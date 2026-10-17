@@ -150,14 +150,14 @@ class HackerTerminalApp(Gtk.Application):
             directory = self.profile_manager.working_directory(self.config.preferences.profile)
         config = AppConfig(self.config.preferences, tuple(args.execute or ()), directory)
         # Later windows start fresh: the saved tabs already came back in the first.
-        self.open_window(config, restore=False, boot=False)
+        self.open_window(config, restore=False)
         return 0
 
-    def open_window(self, config: AppConfig, restore: bool = True, boot: bool | None = None) -> "HackerTerminal":
+    def open_window(self, config: AppConfig, restore: bool = True) -> "HackerTerminal":
         window = HackerTerminal(
             self, config, self.store, self.action_store, self.session_store,
             self.theme_manager, self.profile_manager, self.css_provider,
-            dropdown=self.dropdown, restore=restore, boot=boot,
+            dropdown=self.dropdown, restore=restore,
         )
         self.windows_opened += 1
         if self.dropdown:

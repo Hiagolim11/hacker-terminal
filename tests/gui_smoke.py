@@ -13,7 +13,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from hackerterminal.audio import SoundPlayer
 from hackerterminal.keysound import KeySoundEngine
 from hackerterminal.actions import DEFAULT_ACTIONS, ActionStore, QuickAction
 from hackerterminal.config import AppConfig, ConfigStore, Preferences
@@ -26,14 +25,13 @@ from hackerterminal.dialogs.actions import ActionEditorDialog, FieldsDialog
 from hackerterminal.dialogs.editors import ProfileEditorDialog, ThemeEditorDialog
 from hackerterminal.dialogs.palette import CommandPaletteDialog
 from hackerterminal.dialogs.preferences import PreferencesDialog
-from hackerterminal.window.boot import BootScreen
 from hackerterminal.window.main import HackerTerminal
 
 
 def main() -> int:
     temporary = tempfile.TemporaryDirectory()
     root = Path(temporary.name)
-    preferences = Preferences(boot=False, effects=False, sound=False)
+    preferences = Preferences(effects=False, sound=False)
     store = ConfigStore(root / "config.ini")
     action_store = ActionStore(root / "actions.ini")
     session_store = SessionStore(root / "session.json")
@@ -62,11 +60,6 @@ def main() -> int:
         config, store, action_store, session_store, themes, profiles, provider, separate=True
     )
     application.register(None)
-    boot = BootScreen(SoundPlayer(None, 0), lambda: False)
-    boot.begin()
-    boot.destroy()
-    if boot.source_id:
-        raise AssertionError("boot timer was not cancelled on destroy")
     window = HackerTerminal(
         application, config, store, action_store, session_store, themes, profiles, provider
     )
@@ -227,7 +220,7 @@ def main() -> int:
             sheet_viewer.copy()
             if not wait_for(lambda: (Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).wait_for_text() or "").startswith("Café ☕\t3")):
                 raise AssertionError("copying spreadsheet rows failed")
-            if "VISUALIZAÇÕES" not in window.status.get_text() or "1 SESSÃO" not in window.status.get_text() and "SESSÕES" not in window.status.get_text():
+            if "visualizações" not in window.status.get_text() or "1 aba" not in window.status.get_text() and "abas" not in window.status.get_text():
                 raise AssertionError("status does not count viewers separately")
             broken = root / "quebrado.xlsx"
             broken.write_bytes(b"PK\x03\x04 corrompido")
@@ -550,9 +543,9 @@ def main() -> int:
 
             # A second window of the same process: fresh tabs, shared ht-open
             # socket routed to the pane's own window, preferences applied to both.
-            second_window = application.open_window(AppConfig(preferences, (), root), restore=False, boot=False)
-            if second_window.saved_session is not None or second_window.stack.get_visible_child_name() != "terminal":
-                raise AssertionError("a later window restored the session or showed the boot screen")
+            second_window = application.open_window(AppConfig(preferences, (), root), restore=False)
+            if second_window.saved_session is not None or second_window.notebook.get_n_pages() != 1:
+                raise AssertionError("a later window restored the session instead of opening one fresh tab")
             if second_window.open_socket != window.open_socket:
                 raise AssertionError("windows of one process should share the ht-open socket")
             routed = []
@@ -612,7 +605,7 @@ def main() -> int:
             if recorded.terminal.get_scrollback_lines() < 2**31:
                 raise AssertionError("recording did not lift the scrollback limit")
             window.update_recording_marks()
-            if "GRAVANDO" not in window.status.get_text():
+            if "gravando" not in window.status.get_text():
                 raise AssertionError("status bar does not show the recording")
             recorded.terminal.feed(b"".join(b"gravada %d\r\n" % index for index in range(1500)))
             wait_for(lambda: False, 1.6)
@@ -625,7 +618,7 @@ def main() -> int:
                 raise AssertionError(f"recording content is wrong: {lines[:3]} … {lines[-3:]}")
             if recorder.lost_rows or record_path.stat().st_mode & 0o777 != 0o600:
                 raise AssertionError("recording lost rows or is not private")
-            if "GRAVANDO" in window.status.get_text():
+            if "gravando" in window.status.get_text():
                 raise AssertionError("status bar still shows a stopped recording")
             saved = root / "saida.html"
             if recorded.save_output(saved) < 1500 or "gravada 1499" not in saved.read_text(encoding="utf-8"):
@@ -822,12 +815,21 @@ def main() -> int:
                 width = 800
                 height = 500
 
+            preferences.panel_visible = True
             window.on_configure_event(window, NarrowConfigure())
             if window.action_panel.get_visible():
                 raise AssertionError("narrow window did not auto-hide the sidebar")
             window.toggle_panel()
             if not window.action_panel.get_visible() or not preferences.panel_visible:
                 raise AssertionError("sidebar peek failed or changed the saved preference")
+            # With the panel off by default, the button must still show it on a narrow window.
+            window.toggle_panel()
+            preferences.panel_visible = False
+            window.toggle_panel()
+            if not window.action_panel.get_visible() or preferences.panel_visible:
+                raise AssertionError("peek did nothing when the panel is off by default")
+            window.toggle_panel()
+            preferences.panel_visible = True
             window.on_configure_event(window, WideConfigure())
             if not window.action_panel.get_visible():
                 raise AssertionError("sidebar did not return on a wide window")
@@ -869,7 +871,7 @@ def main() -> int:
             if terminal.config.working_directory != inherited_directory:
                 raise AssertionError("new tab did not inherit the active directory")
             window.update_status()
-            if "GIT daily-work" not in window.status.get_text():
+            if "git daily-work" not in window.status.get_text():
                 raise AssertionError("git branch was not shown in status")
             window.split_active(Gtk.Orientation.HORIZONTAL)
             frame = window.active_frame()

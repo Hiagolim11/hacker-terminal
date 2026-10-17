@@ -75,7 +75,7 @@ class Theme:
     @property
     def tube_padding(self) -> int:
         """Inner terminal padding that keeps text clear of the tube corners."""
-        return round(4 + 10 * self.curvature) if self.curvature else 2
+        return round(4 + 10 * self.curvature) if self.curvature else 8
 
     @property
     def tube_radius(self) -> float:
@@ -93,8 +93,8 @@ class Theme:
         window_background = _rgba(self.background, opacity)
         terminal_background = _rgba(self.terminal_background, opacity)
         accent_soft = _mix(self.accent, self.surface, 0.18)
-        accent_faint = _mix(self.accent, self.background, 0.10)
         raised = _mix(self.foreground, self.surface, 0.05)
+        hairline = _mix(self.border, self.terminal_background, 0.65)  # quiet 1px dividers
         return f"""
 window, .app-root {{ background-color: {window_background}; color: {self.foreground}; }}
 .app-root {{ background-color: transparent; }}
@@ -105,41 +105,33 @@ tooltip, tooltip.background {{
 tooltip label {{ color: {self.foreground}; }}
 
 headerbar {{
-  background-image: none; background-color: {self.surface}; color: {self.foreground};
-  border-bottom: 1px solid {self.border}; box-shadow: none; min-height: 40px; padding: 0 6px;
+  background-image: none; background-color: {terminal_background}; color: {self.foreground};
+  border-bottom: 1px solid {hairline}; box-shadow: none; min-height: 38px; padding: 0 8px;
 }}
-headerbar .title {{ font-weight: 700; color: {self.foreground}; }}
+headerbar .title {{ font-weight: 600; font-size: 13px; color: {self.foreground}; }}
 headerbar .subtitle {{ color: {self.muted}; font-family: monospace; font-size: 10px; opacity: 1; }}
 headerbar button.titlebutton {{ color: {self.muted}; background-image: none; box-shadow: none; }}
 headerbar button.titlebutton:hover {{ color: {self.foreground}; background-color: {raised}; }}
 .header-group {{ margin: 0 2px; }}
 .header-action {{
   color: {self.muted}; background-image: none; background-color: transparent;
-  border: 1px solid transparent; border-radius: 6px; box-shadow: none; text-shadow: none;
-  min-width: 30px; min-height: 28px; padding: 0 4px; -gtk-icon-shadow: none;
+  border: 0; border-radius: 6px; box-shadow: none; text-shadow: none;
+  min-width: 32px; min-height: 28px; padding: 0 6px; -gtk-icon-shadow: none;
 }}
-.header-action:hover {{ color: {self.foreground}; background-color: {raised}; border-color: {self.border}; }}
+.header-action:hover {{ color: {self.foreground}; background-color: {raised}; }}
 .header-action:active, .header-action:checked {{ color: {self.accent}; background-color: {accent_soft}; }}
 .header-action:disabled {{ opacity: 0.35; }}
 .header-separator {{ background-color: {self.border}; min-width: 1px; margin: 9px 4px; }}
 
-.workspace {{ padding: 6px; }}
+.workspace {{ padding: 0; }}
 .statusbar-row {{
-  background-color: {self.surface}; border-top: 1px solid {self.border}; padding: 3px 10px;
+  background-color: {terminal_background}; border-top: 1px solid {hairline}; padding: 4px 14px;
 }}
-.status, .status-context {{ color: {self.muted}; font-family: monospace; font-size: 10px; }}
-.status-context {{ color: {self.foreground}; }}
-.status-badge {{
-  color: {self.accent}; background-color: {accent_faint}; border: 1px solid {accent_soft};
-  border-radius: 9px; padding: 0 7px; font-family: monospace; font-size: 10px; font-weight: 700;
-}}
+.status, .status-context {{ color: {self.muted}; font-size: 11px; }}
 
-.terminal-frame {{
-  background-color: {terminal_background}; border: 1px solid {self.border};
-  border-radius: 8px; padding: 6px 2px 4px 8px;
-}}
+.terminal-frame {{ background-color: {terminal_background}; border: 0; border-radius: 0; padding: 0; }}
 .terminal-frame paned > separator {{
-  background-color: transparent; background-image: image({self.border}); background-size: 1px 1px;
+  background-color: transparent; background-image: image({hairline}); background-size: 1px 1px;
   border: 0; min-width: 1px; min-height: 1px;
 }}
 .terminal-frame paned > separator:hover {{ background-image: image({self.accent}); }}
@@ -149,29 +141,29 @@ headerbar button.titlebutton:hover {{ color: {self.foreground}; background-color
 .terminal-frame paned.vertical > separator {{
   background-repeat: repeat-x; background-position: center; margin: -4px 0; padding: 4px 0;
 }}
-.terminal-frame paned.horizontal > .terminal-pane {{ margin: 0 6px; }}
-.terminal-frame paned.vertical > .terminal-pane {{ margin: 4px 0; }}
+.terminal-frame paned.horizontal > .terminal-pane {{ margin: 0; }}
+.terminal-frame paned.vertical > .terminal-pane {{ margin: 0; }}
 .pane-inactive {{ opacity: {1.0 if self.high_contrast else 0.62}; }}
 vte-terminal {{ background-color: transparent; color: {self.terminal_foreground}; padding: {self.tube_padding}px; }}
 
 notebook {{ background-color: transparent; }}
-notebook > header {{ background-color: transparent; border: 0; box-shadow: none; padding: 0 0 6px 0; }}
+notebook > header {{ background-color: {terminal_background}; border: 0; border-bottom: 1px solid {hairline}; box-shadow: none; padding: 0 8px; }}
 notebook > header > tabs {{ margin: 0; }}
+notebook > header tab, notebook > header tab:checked, notebook > header tab:hover {{
+  background-image: none; background-color: transparent; outline: 0;
+}}
 notebook > header tab {{
-  background-color: {self.surface}; color: {self.muted}; border: 1px solid {self.border};
-  border-radius: 7px; padding: 3px 4px 3px 10px; margin: 0 4px 0 0; min-height: 22px; box-shadow: none;
+  background-color: transparent; color: {self.muted}; border: 0; border-radius: 0;
+  padding: 6px 4px 6px 12px; margin: 0 2px 0 0; min-height: 0; box-shadow: inset 0 -2px transparent;
 }}
-notebook > header tab:hover {{ color: {self.foreground}; background-color: {raised}; }}
-notebook > header tab:checked {{
-  background-color: {self.terminal_background}; color: {self.foreground};
-  border-color: {self.border}; box-shadow: inset 0 -2px {self.accent};
-}}
-notebook > header tab label {{ font-size: 11px; }}
+notebook > header tab:hover {{ color: {self.foreground}; }}
+notebook > header tab:checked {{ color: {self.foreground}; box-shadow: inset 0 -2px {self.accent}; }}
+notebook > header tab label {{ font-size: 12px; }}
 notebook > header > arrow {{ color: {self.muted}; }}
-.viewer {{ background-color: {terminal_background}; border: 1px solid {self.border}; border-radius: 8px; }}
+.viewer {{ background-color: {terminal_background}; border: 0; border-radius: 0; }}
 .viewer-bar {{
-  background-color: {self.surface}; border-bottom: 1px solid {self.border};
-  border-radius: 8px 8px 0 0; padding: 3px 6px;
+  background-color: {terminal_background}; border-bottom: 1px solid {hairline};
+  border-radius: 0; padding: 4px 8px;
 }}
 .viewer-title {{ color: {self.foreground}; font-weight: 700; }}
 .viewer-info {{ color: {self.muted}; font-family: monospace; font-size: 10px; }}
@@ -218,8 +210,8 @@ scrollbar slider:hover {{ background-color: {self.muted}; }}
 scrollbar slider:active {{ background-color: {self.accent}; }}
 
 .search-bar {{
-  background-color: {self.surface}; border: 1px solid {self.border}; border-radius: 7px;
-  padding: 5px 6px; margin: 6px 6px 2px 0;
+  background-color: {terminal_background}; border: 0; border-top: 1px solid {hairline}; border-radius: 0;
+  padding: 6px 10px; margin: 0;
 }}
 .search-entry, entry {{
   color: {self.foreground}; background-color: {self.background}; background-image: none;
@@ -233,17 +225,16 @@ scrollbar slider:active {{ background-color: {self.accent}; }}
 }}
 .search-button:hover {{ color: {self.foreground}; background-color: {self.border}; }}
 
-.panel {{ background-color: {self.surface}; border: 1px solid {self.border}; border-radius: 8px; margin-left: 6px; }}
-.panel-inner {{ padding: 14px 10px 12px 10px; }}
-.panel-title {{ color: {self.accent}; font-weight: 700; font-size: 10px; letter-spacing: 1px; }}
-.panel-section {{ color: {self.muted}; font-weight: 600; font-size: 10px; letter-spacing: 1px; }}
-.panel-hint {{ color: {self.muted}; font-size: 10px; }}
+.panel {{ background-color: {self.surface}; border: 0; border-left: 1px solid {hairline}; border-radius: 0; margin: 0; }}
+.panel-inner {{ padding: 16px 10px 12px 10px; }}
+.panel-title {{ color: {self.muted}; font-weight: 600; font-size: 12px; }}
+.panel-hint {{ color: {self.muted}; font-size: 11px; }}
 .action-button {{
   color: {self.foreground}; background-image: none; background-color: transparent;
-  border: 1px solid transparent; border-radius: 6px; padding: 7px 9px;
-  box-shadow: none; text-shadow: none; font-size: 12px;
+  border: 0; border-radius: 6px; padding: 7px 10px;
+  box-shadow: none; text-shadow: none; font-size: 13px;
 }}
-.action-button:hover {{ background-color: {self.background}; border-color: {self.border}; }}
+.action-button:hover {{ background-color: {raised}; }}
 .action-button:active {{ background-color: {accent_soft}; }}
 .action-button:focus {{ border-color: {accent_soft}; }}
 .action-button .action-dot {{ color: {self.accent}; font-family: monospace; }}
@@ -283,7 +274,7 @@ dialog button.suggested-action {{
   border-color: {self.accent}; box-shadow: none; text-shadow: none; font-weight: 700;
 }}
 dialog button.suggested-action:hover {{ background-color: {self.foreground}; border-color: {self.foreground}; }}
-.dialog-heading {{ color: {self.accent}; font-weight: 700; font-size: 10px; letter-spacing: 1px; margin-top: 8px; }}
+.dialog-heading {{ color: {self.foreground}; font-weight: 600; font-size: 13px; margin-top: 14px; }}
 .palette-category {{
   color: {self.muted}; font-size: 10px; background-color: {self.surface};
   border: 1px solid {self.border}; border-radius: 9px; padding: 0 7px;
@@ -292,14 +283,7 @@ switch {{ background-image: none; background-color: {self.border}; border: 1px s
 switch:checked {{ background-color: {self.accent}; border-color: {self.accent}; }}
 switch slider {{ background-image: none; background-color: {self.foreground}; border: 0; border-radius: 10px; box-shadow: none; }}
 
-.boot {{ background-color: {terminal_background}; }}
 dialog, messagedialog, filechooser {{ background-color: {self.background}; }}
-.boot-card {{ padding: 24px; }}
-.boot-logo {{ color: {self.accent}; font-family: monospace; font-weight: 700; font-size: 34px; letter-spacing: 6px; }}
-.boot-subtitle {{ color: {self.muted}; font-family: monospace; font-size: 11px; letter-spacing: 3px; }}
-.boot-status {{ color: {self.terminal_foreground}; font-family: monospace; font-size: 12px; }}
-.boot progressbar trough {{ background-color: {self.surface}; border: 0; border-radius: 3px; min-height: 4px; }}
-.boot progressbar progress {{ background-image: none; background-color: {self.accent}; border: 0; border-radius: 3px; min-height: 4px; }}
 separator {{ background-color: {self.border}; min-width: 1px; min-height: 1px; }}
 """.encode()
 

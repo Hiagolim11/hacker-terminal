@@ -1,4 +1,4 @@
-"""The side panel with quick actions and toggles."""
+"""The side panel with quick actions."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ class ActionPanel(Gtk.Box):
         self.scroller.set_overlay_scrolling(True)
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         content.get_style_context().add_class("panel-inner")
-        title = Gtk.Label(label="AÇÕES RÁPIDAS", xalign=0)
+        title = Gtk.Label(label="Ações rápidas", xalign=0)
         title.get_style_context().add_class("panel-title")
         title.set_margin_start(4)
         title.set_margin_bottom(8)
@@ -58,30 +58,8 @@ class ActionPanel(Gtk.Box):
         edit_button.get_style_context().add_class("action-button")
         edit_button.connect("clicked", lambda *_: self.on_edit_actions())
         content.pack_start(edit_button, False, False, 0)
-        separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        separator.set_margin_top(10)
-        separator.set_margin_bottom(10)
-        content.pack_start(separator, False, False, 0)
-        preferences_label = Gtk.Label(label="PREFERÊNCIAS", xalign=0)
-        preferences_label.get_style_context().add_class("panel-section")
-        preferences_label.set_margin_start(4)
-        preferences_label.set_margin_bottom(4)
-        content.pack_start(preferences_label, False, False, 0)
-        self.effects = Gtk.CheckButton(label="Efeitos visuais")
-        self.effects.connect("toggled", self.on_effects_toggled)
-        content.pack_start(self.effects, False, False, 0)
-        self.sound = Gtk.CheckButton(label="Som do teclado")
-        self.sound.connect("toggled", self.on_sound_toggled)
-        content.pack_start(self.sound, False, False, 0)
-        hint = Gtk.Label(label="Ctrl+Shift+P abre a paleta", xalign=0)
-        hint.get_style_context().add_class("panel-hint")
-        hint.set_line_wrap(True)
-        hint.set_margin_top(10)
-        hint.set_margin_start(4)
-        content.pack_start(hint, False, False, 0)
         self.scroller.add(content)
         self.pack_start(self.scroller, True, True, 0)
-        self.sync()
 
     def reload_actions(self) -> None:
         for child in self.actions_box.get_children():
@@ -163,19 +141,3 @@ class ActionPanel(Gtk.Box):
         terminal = self.get_terminal()
         if terminal is not None:
             terminal.run_command(command)
-
-    def sync(self) -> None:
-        self.effects.handler_block_by_func(self.on_effects_toggled)
-        self.sound.handler_block_by_func(self.on_sound_toggled)
-        self.effects.set_active(self.preferences.effects)
-        self.sound.set_active(self.preferences.sound)
-        self.effects.handler_unblock_by_func(self.on_effects_toggled)
-        self.sound.handler_unblock_by_func(self.on_sound_toggled)
-
-    def on_effects_toggled(self, checkbox) -> None:
-        self.preferences.effects = checkbox.get_active()
-        self.on_preferences_changed()
-
-    def on_sound_toggled(self, checkbox) -> None:
-        self.preferences.sound = checkbox.get_active()
-        self.on_preferences_changed()

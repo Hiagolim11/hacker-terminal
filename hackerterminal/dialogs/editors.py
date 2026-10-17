@@ -159,11 +159,11 @@ class ThemeEditorDialog(Gtk.Dialog):
         self.get_content_area().pack_start(page, True, True, 0)
         self.name_entry = Gtk.Entry(text=base.name if editing else f"{base.name} (personalizado)")
         self.author_entry = Gtk.Entry(text=base.author if editing else os.environ.get("USER", ""))
-        page.heading("IDENTIDADE")
+        page.heading("Identidade")
         page.field("Nome", self.name_entry)
         page.field("Autor", self.author_entry)
         self.colors: dict[str, Gtk.ColorButton] = {}
-        sections = {"interface": "INTERFACE", "terminal": "TERMINAL", "effects": "EFEITOS"}
+        sections = {"interface": "Interface", "terminal": "Terminal", "effects": "Efeitos"}
         current = None
         for section, _key, attribute in THEME_COLOR_FIELDS:
             if section != current:
@@ -178,7 +178,7 @@ class ThemeEditorDialog(Gtk.Dialog):
         self.scanlines.set_value(base.scanline_opacity)
         page.field("Intensidade das scanlines", self.scanlines)
         self.crt: dict[str, Gtk.Scale] = {}
-        page.heading("TELA CRT (com efeitos visuais ligados)")
+        page.heading("Tela CRT (com efeitos visuais ligados)")
         for key, label in CRT_LABELS:
             scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 1, 0.05)
             scale.set_digits(2)
@@ -191,7 +191,7 @@ class ThemeEditorDialog(Gtk.Dialog):
         self.font_entry = Gtk.Entry(text=base.font or "")
         self.font_entry.set_placeholder_text("Opcional, ex.: Terminus")
         page.field("Fonte sugerida", self.font_entry)
-        page.heading("PALETA ANSI")
+        page.heading("Paleta ANSI")
         ansi_grid = Gtk.Grid(column_spacing=6, row_spacing=4, column_homogeneous=True)
         self.ansi: list[Gtk.ColorButton] = []
         for index, color in enumerate(base.ansi):
@@ -268,7 +268,7 @@ class ProfileEditorDialog(Gtk.Dialog):
         start = Path(profile.working_directory).expanduser() if profile else Path.home()
         self.directory.set_filename(str(start if start.is_dir() else Path.home()))
         self.own_actions = Gtk.Switch(active=profile.own_actions if profile else False)
-        page.heading("PERFIL")
+        page.heading("Perfil")
         page.field("Nome", self.name_entry)
         page.field("Descrição", self.description_entry)
         page.field("Diretório inicial", self.directory)

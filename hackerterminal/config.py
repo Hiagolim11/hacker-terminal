@@ -64,11 +64,10 @@ class Preferences:
     theme: str = DEFAULT_THEME
     font: str | None = None
     font_size: int = DEFAULT_FONT_SIZE
-    boot: bool = False
     effects: bool = False
     sound: bool = False
     scrollback_lines: int = DEFAULT_SCROLLBACK
-    panel_visible: bool = True
+    panel_visible: bool = False
     restore_session: bool = True
     cursor_shape: str = "block"
     cursor_blink: str = "system"
@@ -150,11 +149,10 @@ class ConfigStore:
                 theme=section.get("theme", DEFAULT_THEME),
                 font=section.get("font") or None,
                 font_size=self._integer(section, "font_size", DEFAULT_FONT_SIZE),
-                boot=self._boolean(section, "boot", False),
                 effects=self._boolean(section, "effects", False),
                 sound=self._boolean(section, "sound", False),
                 scrollback_lines=self._integer(section, "scrollback_lines", DEFAULT_SCROLLBACK),
-                panel_visible=self._boolean(section, "panel_visible", True),
+                panel_visible=self._boolean(section, "panel_visible", False),
                 restore_session=self._boolean(section, "restore_session", True),
                 cursor_shape=section.get("cursor_shape", "block"),
                 cursor_blink=section.get("cursor_blink", "system"),
@@ -201,7 +199,6 @@ class ConfigStore:
             "theme": preferences.theme,
             "font": preferences.font or "",
             "font_size": str(preferences.font_size),
-            "boot": str(preferences.boot).lower(),
             "effects": str(preferences.effects).lower(),
             "sound": str(preferences.sound).lower(),
             "scrollback_lines": str(preferences.scrollback_lines),

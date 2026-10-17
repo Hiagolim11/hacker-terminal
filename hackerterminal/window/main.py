@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import logging
-import os
-import tempfile
+import re
 from pathlib import Path
 from typing import Callable
 
 from ..actions import ActionStore
-from ..audio import SoundPlayer, make_tone
 from ..config import AppConfig, ConfigStore
 from ..connections import ConnectionStore
 from ..constants import APP_NAME
@@ -28,7 +26,6 @@ from ..session import SessionState, SessionStore, SessionTab
 from ..shortcuts import ShortcutMap, accelerator_label
 from ..terminal import TerminalPane
 from ..themes import ThemeManager
-from .boot import BootScreen
 from .commands import CommandsMixin
 from .dropdown import DropdownMixin
 from .output import OutputMixin
@@ -40,6 +37,7 @@ from .viewer import ViewerMixin
 LOGGER = logging.getLogger(__name__)
 
 
+TITLE_PREFIX = re.compile(r"^[\w.-]+@[\w.-]+:\s*")  # "user@host: " in shell titles
 SESSION_AUTOSAVE_SECONDS = 30
 
 
@@ -52,19 +50,18 @@ COMPACT_WIDTH = 1000
 COMPACT_HEIGHT = 600
 
 
+# A quiet header: everything else (split, search, history, SSH...) is one
+# shortcut away and listed in the command palette.
 HEADER_ACTIONS = (
     # icon name, fallback glyph, tooltip, shortcut id
     ("tab-new-symbolic", "+", "Nova aba", "new_tab"),
-    ("view-dual-symbolic", "▥", "Dividir painel", "split_horizontal"),
-    ("edit-find-symbolic", "⌕", "Pesquisar no histórico", "search"),
-    ("view-grid-symbolic", "⌘", "Paleta de comandos", "command_palette"),
-    ("network-server-symbolic", "⇄", "Conexões SSH", "ssh_manager"),
 )
 
 
-HEADER_END_ACTIONS = (
+HEADER_END_ACTIONS = (  # packed from the right edge
     ("preferences-system-symbolic", "⚙", "Preferências", "preferences"),
     ("view-right-pane-symbolic", "☰", "Mostrar ou ocultar ações", "toggle_panel"),
+    ("view-grid-symbolic", "⌘", "Paleta de comandos", "command_palette"),
 )
 
 
@@ -95,7 +92,6 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         css_provider: Gtk.CssProvider,
         dropdown: bool = False,
         restore: bool = True,
-        boot: bool | None = None,
     ) -> None:
         super().__init__(application=application, title="Hacker Terminal")
         self.dropdown = dropdown
@@ -150,23 +146,14 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         if dropdown:
             self.setup_dropdown()
         self.update_header_tooltips()
-        self.boot_sound = self.build_sounds()
         self.configure_key_sound()
 
-        self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, transition_duration=240)
-        self.add(self.stack)
-        self.boot = BootScreen(self.boot_sound, self.enter_terminal)
-        self.stack.add_named(self.boot, "boot")
         self.workspace = self.build_workspace()
-        self.stack.add_named(self.workspace, "terminal")
-        show_boot = self.preferences.boot if boot is None else boot
-        self.stack.set_visible_child_name("boot" if show_boot else "terminal")
-        self.set_toolbar_sensitive(not show_boot)
+        self.add(self.workspace)
+        # The first tabs exist before the window is shown, so it is laid out
+        # and styled once, with the terminal already in place.
+        self.open_first_tabs()
         self.show_all()
-        if show_boot:
-            GLib.timeout_add(100, lambda: not self.closing_window and self.boot.begin() and False)
-        else:
-            self.enter_terminal()
         self.status_source_id = GLib.timeout_add_seconds(3, self.refresh_status)
         self.command_source_id = 0
         self.update_command_watch()
@@ -174,7 +161,7 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
 
     def build_header(self) -> Gtk.HeaderBar:
         self.header = Gtk.HeaderBar(title="Hacker Terminal")
-        self.header.set_has_subtitle(True)
+        self.header.set_has_subtitle(False)
         self.header.set_show_close_button(True)
         start = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
         start.get_style_context().add_class("header-group")
@@ -302,10 +289,15 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         return True
 
     def load_theme_css(self) -> None:
+        # Both are costly (GTK restyles every widget), so only when they change:
+        # the startup code has usually loaded the same CSS already.
         opacity = self.preferences.opacity / 100 if self.translucent else 1.0
-        self.css_provider.load_from_data(self.active_theme.css(opacity))
+        css = self.active_theme.css(opacity)
+        if getattr(self.css_provider, "loaded_css", None) != css:
+            self.css_provider.load_from_data(css)
+            self.css_provider.loaded_css = css
         settings = Gtk.Settings.get_default()
-        if settings is not None:
+        if settings is not None and settings.get_property("gtk-application-prefer-dark-theme") != self.active_theme.dark:
             settings.set_property("gtk-application-prefer-dark-theme", self.active_theme.dark)
 
     def autosave_session(self) -> bool:
@@ -313,7 +305,7 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         if self.closing_window:
             self.autosave_source_id = 0
             return False
-        if self.stack.get_visible_child_name() == "terminal" and self.notebook.get_n_pages():
+        if self.notebook.get_n_pages():
             self.save_session()
         return True
 
@@ -322,19 +314,6 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
             KeySoundEngine.shared().configure(
                 self.preferences.key_switch, self.preferences.key_volume, self.preferences.key_release
             )
-
-    def build_sounds(self) -> SoundPlayer:
-        cache_setting = os.environ.get("XDG_CACHE_HOME")
-        cache_home = Path(cache_setting).expanduser() if cache_setting else Path.home() / ".cache"
-        sound_dir = cache_home / APP_NAME
-        self.sound_tempdir: tempfile.TemporaryDirectory[str] | None = None
-        try:
-            sound_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-        except OSError:
-            self.sound_tempdir = tempfile.TemporaryDirectory(prefix=f"{APP_NAME}-")
-            sound_dir = Path(self.sound_tempdir.name)
-        boot = make_tone(sound_dir / "boot.wav", [(196, 0.09), (294, 0.09), (392, 0.12), (587, 0.20)])
-        return SoundPlayer(boot, 0.34)
 
     def build_workspace(self) -> Gtk.Widget:
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
@@ -362,17 +341,13 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
             self.apply_panel_visibility()
         root.pack_start(body, True, True, 0)
 
-        statusbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        statusbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
         statusbar.get_style_context().add_class("statusbar-row")
-        self.status_badge = Gtk.Label(label="")
-        self.status_badge.get_style_context().add_class("status-badge")
-        self.status_badge.set_no_show_all(True)
-        statusbar.pack_start(self.status_badge, False, False, 0)
         self.status_context = Gtk.Label(label="", xalign=0)
         self.status_context.set_ellipsize(Pango.EllipsizeMode.START)
         self.status_context.get_style_context().add_class("status-context")
         statusbar.pack_start(self.status_context, True, True, 0)
-        self.status = Gtk.Label(label="0 SESSÕES", xalign=1)
+        self.status = Gtk.Label(label="", xalign=1)
         self.status.set_ellipsize(Pango.EllipsizeMode.START)
         self.status.get_style_context().add_class("status")
         statusbar.pack_end(self.status, False, True, 0)
@@ -399,7 +374,7 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         return False
 
     def restore_active_terminal_focus(self) -> bool:
-        if self.closing_window or self.stack.get_visible_child_name() != "terminal":
+        if self.closing_window:
             return False
         pane = self.get_active_terminal()
         if pane is None:
@@ -409,9 +384,7 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         pane.terminal.grab_focus()
         return False
 
-    def enter_terminal(self) -> bool:
-        self.stack.set_visible_child_name("terminal")
-        self.set_toolbar_sensitive(True)
+    def open_first_tabs(self) -> bool:
         if self.notebook.get_n_pages() == 0:
             if not self.restore_session():
                 self.new_tab(initial=True)
@@ -470,8 +443,8 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
             tab_box.pack_start(Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.MENU), False, False, 0)
         label = Gtk.Label(label=text)
         label.set_ellipsize(Pango.EllipsizeMode.END)
-        label.set_max_width_chars(18)
-        label.set_width_chars(8)
+        label.set_max_width_chars(24)
+        label.set_width_chars(18)
         close_button = header_button("window-close-symbolic", "×", "Fechar aba")
         close_button.get_style_context().remove_class("header-action")
         close_button.set_relief(Gtk.ReliefStyle.NONE)
@@ -544,11 +517,19 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         if pane.title_prefix and not title.startswith(pane.title_prefix):
             title = f"{pane.title_prefix} · {title}"
         if label is not None:
-            compact = title if len(title) <= 28 else title[:27] + "…"
+            # "user@host: ~/dir" says the same thing on every tab; the folder
+            # is what tells tabs apart. The full title stays in the tooltip.
+            short = TITLE_PREFIX.sub("", title) or title
+            if len(short) <= 28:
+                compact = short
+            elif short.startswith(("~", "/")):
+                compact = "…" + short[-27:]  # a folder: its last part matters
+            else:
+                compact = short[:27] + "…"
             label.set_text(compact)
             label.set_tooltip_text(title)
         if pane is self.get_active_terminal():
-            self.header.set_subtitle(title)
+            self.header.set_title(title)
             self.set_title(f"{title} — Hacker Terminal")
 
     def on_switch_page(self, _notebook, page, _number) -> None:
@@ -591,9 +572,9 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
     def toggle_panel(self) -> None:
         if self.action_panel is None:
             return
-        if self.panel_auto_hidden and self.preferences.panel_visible:
-            # Narrow windows hide the panel automatically; peeking does not
-            # change the saved preference.
+        if self.panel_auto_hidden:
+            # Narrow windows hide the panel; the button shows it for a peek
+            # whatever the saved preference is, and leaves that preference alone.
             self.panel_peek = not self.panel_peek
             self.apply_panel_visibility()
             return
@@ -720,7 +701,6 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         for terminal in self.terminals():
             terminal.apply_preferences(self.active_theme)
         if self.action_panel is not None:
-            self.action_panel.sync()
             self.apply_panel_visibility()
         self.update_status()
         application = self.get_application()
@@ -730,54 +710,56 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
     def apply_panel_visibility(self) -> None:
         if self.action_panel is None:
             return
-        visible = self.preferences.panel_visible and (not self.panel_auto_hidden or self.panel_peek)
+        visible = self.panel_peek if self.panel_auto_hidden else self.preferences.panel_visible
         self.action_panel.set_no_show_all(not visible)
         self.action_panel.set_visible(visible)
 
     def update_status(self) -> None:
-        count = len(self.page_panes)
+        tabs = len(self.page_panes)
         panes = len(self.terminals())
-        pane_status = f" • {panes} {'PAINEL' if panes == 1 else 'PAINÉIS'}"
-        parts = [f"{count} {'SESSÃO' if count == 1 else 'SESSÕES'}{pane_status}"]
+        parts = [f"{tabs} {'aba' if tabs == 1 else 'abas'}"]
+        if panes != tabs:
+            parts.append(f"{panes} {'painel' if panes == 1 else 'painéis'}")
+        alerts: list[str] = []  # shown first, in the theme's alert colour
         terminal = self.get_active_terminal()
         directory_text = ""
         viewer = self.active_viewer()
         if viewer is not None:
             directory_text = shorten_home(viewer.path)
         if self.viewers:
-            parts.append(f"{len(self.viewers)} {'VISUALIZAÇÃO' if len(self.viewers) == 1 else 'VISUALIZAÇÕES'}")
+            parts.append(f"{len(self.viewers)} {'visualização' if len(self.viewers) == 1 else 'visualizações'}")
         frame = self.active_frame()
         if frame is not None and frame in self.broadcast_frames:
-            parts.insert(0, f"⇉ TRANSMITINDO PARA {len(self.page_panes.get(frame, []))}")
+            alerts.append(f"⇉ transmitindo para {len(self.page_panes.get(frame, []))}")
         recording = sum(1 for pane in self.terminals() if pane.recorder is not None)
         if recording:
-            parts.insert(0, "● GRAVANDO" if recording == 1 else f"● GRAVANDO {recording}")
+            alerts.append("● gravando" if recording == 1 else f"● gravando {recording}")
         if terminal is not None:
             directory = terminal.current_working_directory()
             directory_text = shorten_home(directory)
             last = next((mark for mark in reversed(terminal.prompts) if mark.finished), None)
             if last is not None and last.exit_status not in (None, 0):
-                parts.append(f"✗ SAÍDA {last.exit_status}")
+                alerts.append(f"✗ saída {last.exit_status}")
             context = detect_project_context(directory)
             if context.branch:
-                parts.append(f"GIT {context.branch}")
+                parts.append(f"git {context.branch}")
             if context.environment:
-                parts.append(f"ENV {context.environment}")
-        text = " • ".join(parts)
-        if self.status.get_text() != text:
-            self.status.set_text(text)
+                parts.append(f"env {context.environment}")
+        escape = GLib.markup_escape_text
+        markup = "  ·  ".join(
+            [f'<span foreground="{self.active_theme.danger}">{escape(alert)}</span>' for alert in alerts]
+            + [escape(part) for part in parts]
+        )
+        if self.status.get_label() != markup:
+            self.status.set_markup(markup)
         if getattr(self, "toast_text", ""):
             directory_text = self.toast_text
         if self.status_context.get_text() != directory_text:
             self.status_context.set_text(directory_text)
             self.status_context.set_tooltip_text(directory_text or None)
-        badge = self.active_theme.name.upper()
-        if self.status_badge.get_text() != badge:
-            self.status_badge.set_text(badge)
-        self.status_badge.show()
-        subtitle = (terminal.title if terminal is not None else "") or directory_text
-        if self.header.get_subtitle() != subtitle:
-            self.header.set_subtitle(subtitle)
+        title = (terminal.title if terminal is not None else "") or directory_text or "Hacker Terminal"
+        if self.header.get_title() != title:
+            self.header.set_title(title)
 
     def refresh_status(self) -> bool:
         if self.closing_window:
@@ -795,10 +777,6 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
             if source and context.find_source_by_id(source) is not None:
                 GLib.source_remove(source)
             setattr(self, attribute, 0)
-
-    def set_toolbar_sensitive(self, sensitive: bool) -> None:
-        for button in self.toolbar_buttons:
-            button.set_sensitive(sensitive)
 
     def confirm_close(self, message: str) -> bool:
         dialog = Gtk.MessageDialog(
@@ -850,8 +828,6 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         )
 
     def on_window_key_press(self, _window, event) -> bool:
-        if self.stack.get_visible_child_name() != "terminal":
-            return False
         identifier = self.shortcuts.match(event.keyval, event.state)
         if identifier is None:
             return False

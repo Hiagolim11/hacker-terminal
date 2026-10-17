@@ -34,7 +34,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--list-themes", action="store_true", help="lista os temas disponíveis e sai")
     parser.add_argument("--profile", metavar="ID", help="aplica um perfil nesta janela")
     parser.add_argument("--list-profiles", action="store_true", help="lista os perfis disponíveis e sai")
-    parser.add_argument("--no-boot", action="store_true", help="pula a animação inicial")
+    # Kept so existing launchers keep working; there is no opening animation any more.
+    parser.add_argument("--no-boot", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--no-effects", action="store_true", help="desativa chuva digital e scanlines")
     parser.add_argument("--no-sound", action="store_true", help="desativa os efeitos sonoros")
     parser.add_argument("--no-panel", action="store_true", help="inicia com o painel lateral oculto")
@@ -148,7 +149,6 @@ def main(argv: list[str] | None = None) -> int:
         if not 6 <= args.font_size <= 32:
             parser.error("--font-size deve estar entre 6 e 32")
         preferences.font_size = args.font_size
-    preferences.boot = preferences.boot and not args.no_boot and env_enabled("HACKER_TERMINAL_BOOT")
     preferences.effects = preferences.effects and not args.no_effects and env_enabled("HACKER_TERMINAL_EFFECTS")
     preferences.sound = preferences.sound and not args.no_sound and env_enabled("HACKER_TERMINAL_SOUND")
     preferences.panel_visible = preferences.panel_visible and not args.no_panel
@@ -161,8 +161,7 @@ def main(argv: list[str] | None = None) -> int:
         ))
     )
     if args.dropdown:
-        # Pops up instantly and keeps its own tabs, apart from the main window.
-        preferences.boot = False
+        # Keeps its own tabs, apart from the main window.
         session_store = SessionStore(session_store.path.with_name("session-dropdown.json"))
     preferences.normalize()
     working_directory = (

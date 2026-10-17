@@ -41,7 +41,6 @@ class Profile:
     description: str
     theme: str
     font_size: int
-    boot: bool
     effects: bool
     sound: bool
     panel_visible: bool
@@ -60,13 +59,12 @@ PROFILES = (
     Profile(
         "developer",
         "Desenvolvimento",
-        "Visual sóbrio, ações visíveis e sem distrações.",
+        "Visual sóbrio e sem distrações.",
         "minimal-dark",
         11,
         False,
         False,
         False,
-        True,
         builtin=True,
     ),
     Profile(
@@ -78,27 +76,25 @@ PROFILES = (
         False,
         False,
         False,
-        False,
         builtin=True,
     ),
     Profile(
         "retro",
         "Retro Hacker",
-        "Identidade visual completa com boot e efeitos.",
+        "Identidade visual completa, com chuva digital e efeitos.",
         "matrix-green",
         11,
-        True,
         True,
         False,
         True,
         builtin=True,
-    ),    Profile(
+    ),
+    Profile(
         "crt",
         "Retrô CRT",
         "Monitor de fósforo âmbar com brilho, curvatura e ruído, inspirado no Cool Retro Term.",
         "phosphor-amber",
         12,
-        True,
         True,
         False,
         False,
@@ -146,7 +142,6 @@ def load_profile(path: Path) -> Profile:
         description=" ".join(section.get("description", "").split()),
         theme=section.get("theme", "").strip() or "minimal-dark",
         font_size=font_size,
-        boot=_boolean(section.get("boot"), False),
         effects=_boolean(section.get("effects"), False),
         sound=_boolean(section.get("sound"), False),
         panel_visible=_boolean(section.get("panel_visible"), True),
@@ -168,7 +163,6 @@ def profile_to_ini(profile: Profile) -> str:
         "description": " ".join(profile.description.split()),
         "theme": profile.theme,
         "font_size": str(profile.font_size),
-        "boot": str(profile.boot).lower(),
         "effects": str(profile.effects).lower(),
         "sound": str(profile.sound).lower(),
         "panel_visible": str(profile.panel_visible).lower(),
@@ -200,7 +194,6 @@ def profile_from_preferences(
         description=" ".join(description.split()),
         theme=preferences.theme,
         font_size=preferences.font_size,
-        boot=preferences.boot,
         effects=preferences.effects,
         sound=preferences.sound,
         panel_visible=preferences.panel_visible,
@@ -297,7 +290,6 @@ class ProfileManager:
         preferences.profile = profile.identifier
         preferences.theme = profile.theme
         preferences.font_size = profile.font_size
-        preferences.boot = profile.boot
         preferences.effects = profile.effects
         preferences.sound = profile.sound
         preferences.panel_visible = profile.panel_visible

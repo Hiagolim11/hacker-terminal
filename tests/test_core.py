@@ -16,7 +16,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 from hackerterminal.actions import ActionStore, QuickAction
-from hackerterminal.audio import make_tone
 from hackerterminal.cli import build_parser
 from hackerterminal.config import ConfigStore, Preferences, clamp, env_enabled
 from hackerterminal.logs import setup_logging
@@ -45,7 +44,6 @@ class ConfigurationTests(unittest.TestCase):
             expected = Preferences(
                 font="JetBrainsMono Nerd Font Mono",
                 font_size=14,
-                boot=False,
                 effects=False,
                 sound=False,
                 scrollback_lines=42_000,
@@ -77,7 +75,6 @@ class ConfigurationTests(unittest.TestCase):
         preferences = Preferences()
         self.assertEqual(preferences.profile, "developer")
         self.assertEqual(preferences.theme, "minimal-dark")
-        self.assertFalse(preferences.boot)
         self.assertFalse(preferences.effects)
         self.assertFalse(preferences.sound)
 
@@ -98,12 +95,19 @@ class RuntimeTests(unittest.TestCase):
         with patch.dict(os.environ, {"SHELL": "/definitely/missing"}):
             self.assertTrue(Path(resolve_shell()).is_file())
 
-    def test_tone_is_atomic_and_optional(self) -> None:
+    def test_old_settings_with_the_removed_boot_animation_still_load(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            tone = Path(directory) / "tone.wav"
-            self.assertEqual(make_tone(tone, [(440, 0.01)]), tone)
-            self.assertGreater(tone.stat().st_size, 44)
-        self.assertIsNone(make_tone(Path("/definitely/missing/tone.wav"), [(440, 0.01)]))
+            config = Path(directory) / "config.ini"
+            config.write_text("[terminal]\nboot = true\ntheme = aurora\n", encoding="utf-8")
+            self.assertEqual(ConfigStore(config).load().theme, "aurora")
+            profiles = Path(directory) / "profiles"
+            profiles.mkdir()
+            (profiles / "antigo.ini").write_text(
+                "[profile]\nid = antigo\nname = Antigo\ntheme = aurora\nboot = true\n", encoding="utf-8"
+            )
+            manager = ProfileManager(profiles)
+            self.assertEqual(manager.errors, [])
+            self.assertEqual(manager.get("antigo").theme, "aurora")
 
     def test_invalid_process_has_no_children(self) -> None:
         self.assertFalse(process_has_children(-1))
@@ -148,8 +152,8 @@ class ProfileTests(unittest.TestCase):
         profile = manager.apply("retro", preferences)
         self.assertEqual(profile.identifier, "retro")
         self.assertEqual(preferences.theme, "matrix-green")
-        self.assertTrue(preferences.boot)
         self.assertTrue(preferences.effects)
+        self.assertTrue(preferences.panel_visible)
         self.assertFalse(preferences.sound)
         self.assertEqual(manager.get("missing").identifier, "developer")
 
@@ -1062,7 +1066,7 @@ class PhosphorThemeTests(unittest.TestCase):
         self.assertTrue(theme.rain)
         self.assertEqual((theme.glow, theme.vignette, theme.noise, theme.flicker, theme.curvature), (0, 0, 0, 0, 0))
         self.assertIsNone(theme.font)
-        self.assertEqual(theme.tube_padding, 2)
+        self.assertEqual(theme.tube_padding, 8)  # breathing room around the text
 
     def test_tube_corners_never_cover_text(self) -> None:
         import math
@@ -1500,9 +1504,7 @@ class LazyStartupTests(unittest.TestCase):
     def test_gstreamer_is_not_loaded_until_a_sound_plays(self) -> None:
         code = (
             "import sys\n"
-            "import hackerterminal.app, hackerterminal.keysound, hackerterminal.audio\n"
-            "from hackerterminal.audio import SoundPlayer\n"
-            "player = SoundPlayer(None, 0.3)\n"
+            "import hackerterminal.app, hackerterminal.keysound, hackerterminal.window.main\n"
             "print('gi.repository.Gst' in sys.modules)\n"
         )
         result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True,

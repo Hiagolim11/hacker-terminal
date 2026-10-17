@@ -2,6 +2,14 @@
 
 Este projeto segue [Semantic Versioning](https://semver.org/).
 
+## 0.19.0
+
+- **Interface mais limpa e moderna**: o terminal ocupa a janela inteira, sem moldura; cabeçalho, abas e barra de status usam a cor do terminal e se separam por linhas finas. O cabeçalho ficou com quatro botões — nova aba, paleta, painel e preferências; dividir, pesquisar, histórico e SSH continuam nos atalhos e na paleta. As abas viraram texto com um sublinhado na ativa e mostram a pasta (`~/projeto`) em vez de `usuário@máquina:`. A barra de status usa texto normal (`2 abas · git main`) e destaca em vermelho só o que pede atenção (`✗ saída 2`, gravando, transmitindo). Títulos de seção sem caixa alta e mais respiro em volta do texto do terminal.
+- O painel de ações rápidas começa fechado (`Ctrl+Shift+B` ou o botão ☰ abrem) e ficou só com as ações; efeitos e som continuam nas Preferências. Em janelas estreitas, o botão mostra o painel por cima mesmo quando ele está desligado.
+- **A animação de abertura foi removida**, junto com o som que ela gerava a cada janela. A opção `--no-boot` continua aceita e configurações ou perfis antigos com `boot` são lidos sem erro.
+- **Abre mais rápido**: o shell fica pronto em ~0,8 s, contra ~1,2 s antes. A primeira aba é criada antes de a janela aparecer, o shell inicia enquanto a janela se monta, e o CSS do tema não é mais recarregado à toa.
+- Capturas de tela do README e do site refeitas com a nova interface.
+
 ## 0.18.0
 
 - **Abre mais rápido e usa menos memória**: as janelas agora compartilham um processo. Com o Hacker Terminal aberto, uma nova janela é entregue ao processo existente antes de carregar o GTK e abre em ~0,4 s (antes 1,2–1,8 s); três janelas usam ~150 MB em vez de ~470 MB. Opções que mudam a aparência (`--theme`, `--profile`, `--font`…) e o novo `--separate` abrem um processo próprio. Mudanças nas Preferências valem para todas as janelas, só a primeira restaura a sessão e erros (como uma pasta inexistente) voltam para quem pediu a janela.
