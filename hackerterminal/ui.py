@@ -41,6 +41,7 @@ from .runtime import Gdk, GdkX11, Gio, GLib, Gtk, Pango
 from .session import MAX_PANES_PER_TAB, SessionState, SessionStore, SessionTab
 from .shortcuts import MODIFIER_MASK, SHORTCUT_ACTIONS, ShortcutMap, accelerator_label, accelerator_name
 from . import passwords
+from .history import HistoryEntry, HistoryStore, search as search_history
 from .terminal import TerminalPane, format_duration, host_files, shell_argv
 from .themes import THEME_COLOR_FIELDS, Theme, ThemeManager, ThemeError
 
@@ -734,6 +735,139 @@ class SSHManagerDialog(Gtk.Dialog):
         self.refresh(select)
 
 
+def relative_time(moment: float, now: float | None = None) -> str:
+    seconds = max(0, int((now if now is not None else time.time()) - moment))
+    if seconds < 60:
+        return "agora"
+    if seconds < 3600:
+        return f"há {seconds // 60} min"
+    if seconds < 86400:
+        return f"há {seconds // 3600} h"
+    if seconds < 7 * 86400:
+        return f"há {seconds // 86400} d"
+    return time.strftime("%d/%m/%Y", time.localtime(moment))
+
+
+class HistoryDialog(Gtk.Dialog):
+    """Search the commands run in every tab; "Usar" types one back, without Enter."""
+
+    COLUMNS = ("Resultado", "Comando", "Quando", "Duração", "Onde")
+
+    def __init__(self, parent: Gtk.Window, store: HistoryStore, recording: bool) -> None:
+        super().__init__(title="Histórico de comandos", transient_for=parent, modal=True)
+        self.store = store
+        self.entries = store.load()
+        self.add_buttons("Fechar", Gtk.ResponseType.CANCEL, "Usar no terminal", Gtk.ResponseType.OK)
+        mark_suggested(self)
+        self.set_default_response(Gtk.ResponseType.OK)
+        self.set_default_size(min(900, max(520, parent.get_allocated_width() - 60)), 520)
+        box = self.get_content_area()
+        box.set_spacing(8)
+        box.set_border_width(12)
+        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.search = Gtk.SearchEntry(placeholder_text="Buscar por comando, pasta ou aba (ex.: nmap 10.0.0)")
+        self.search.connect("search-changed", lambda *_: self.refresh())
+        self.search.connect("activate", lambda *_: self.response(Gtk.ResponseType.OK))
+        self.only_failed = Gtk.CheckButton(label="Só falhas")
+        self.only_failed.connect("toggled", lambda *_: self.refresh())
+        self.repeated = Gtk.CheckButton(label="Mostrar repetidos")
+        self.repeated.connect("toggled", lambda *_: self.refresh())
+        top.pack_start(self.search, True, True, 0)
+        top.pack_start(self.only_failed, False, False, 0)
+        top.pack_start(self.repeated, False, False, 0)
+        box.pack_start(top, False, False, 0)
+        # result text, command, when, duration, where, failed?, full tooltip
+        self.model = Gtk.ListStore(str, str, str, str, str, bool, str)
+        self.view = Gtk.TreeView(model=self.model, headers_visible=True, enable_search=False)
+        self.view.set_tooltip_column(6)
+        self.view.connect("row-activated", lambda *_: self.response(Gtk.ResponseType.OK))
+        for index, title in enumerate(self.COLUMNS):
+            renderer = Gtk.CellRendererText()
+            column = Gtk.TreeViewColumn(title, renderer, text=index)
+            if index == 0:
+                column.set_cell_data_func(renderer, self.paint_result)
+            if index == 1:
+                renderer.set_property("family", "monospace")
+                renderer.set_property("ellipsize", Pango.EllipsizeMode.END)
+                column.set_expand(True)
+            if index == 4:
+                renderer.set_property("ellipsize", Pango.EllipsizeMode.START)  # keep the folder's end
+                column.set_min_width(180)
+            column.set_resizable(True)
+            self.view.append_column(column)
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scroller.add(self.view)
+        box.pack_start(scroller, True, True, 0)
+        bottom = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.summary = Gtk.Label(xalign=0)
+        self.summary.set_line_wrap(True)
+        self.summary.get_style_context().add_class("panel-hint")
+        copy_button = Gtk.Button(label="Copiar")
+        copy_button.connect("clicked", lambda *_: self.copy_selected())
+        clear_button = Gtk.Button(label="Limpar histórico…")
+        clear_button.connect("clicked", lambda *_: self.clear_history())
+        bottom.pack_start(self.summary, True, True, 0)
+        bottom.pack_end(clear_button, False, False, 0)
+        bottom.pack_end(copy_button, False, False, 0)
+        box.pack_start(bottom, False, False, 0)
+        self.notice = "" if recording else (
+            "O histórico só registra comandos com a integração com o shell e o histórico ligados "
+            "(Preferências → Geral). "
+        )
+        self.refresh()
+        self.show_all()
+        self.search.grab_focus()
+
+    def paint_result(self, _column, renderer, model, iterator, _data) -> None:
+        failed = model[iterator][5]
+        renderer.set_property("foreground", "#e5484d" if failed else None)
+        renderer.set_property("weight", Pango.Weight.BOLD if failed else Pango.Weight.NORMAL)
+
+    def refresh(self) -> None:
+        matches = search_history(
+            self.entries, self.search.get_text(), self.only_failed.get_active(), not self.repeated.get_active()
+        )
+        self.model.clear()
+        now = time.time()
+        for entry in matches:
+            if entry.status is None:
+                result = "—"
+            else:
+                result = "✓" if entry.status == 0 else f"✗ {entry.status}"
+            folder = shorten_home(Path(entry.directory)) if entry.directory else ""
+            where = " · ".join(part for part in (entry.place, folder) if part)
+            tooltip = f"{entry.command}\n{folder}"
+            self.model.append([
+                result, entry.command, relative_time(entry.finished_at, now),
+                "< 1 s" if entry.duration < 1 else format_duration(entry.duration),
+                where, entry.failed, GLib.markup_escape_text(tooltip.strip()),
+            ])
+        if len(self.model):
+            self.view.get_selection().select_path(Gtk.TreePath.new_first())
+        failures = sum(1 for entry in self.entries if entry.failed)
+        self.summary.set_text(
+            f"{self.notice}{len(matches)} de {len(self.entries)} comandos • {failures} falharam. "
+            "Comandos digitados com um espaço no início não são guardados."
+        )
+        self.set_response_sensitive(Gtk.ResponseType.OK, bool(len(self.model)))
+
+    def selected_command(self) -> str | None:
+        model, iterator = self.view.get_selection().get_selected()
+        return model[iterator][1] if iterator is not None else None
+
+    def copy_selected(self) -> None:
+        command = self.selected_command()
+        if command:
+            Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(command, -1)
+
+    def clear_history(self) -> None:
+        if confirm(self, "Limpar o histórico de comandos?", "Todos os comandos guardados serão apagados.", "Limpar"):
+            self.store.clear()
+            self.entries = []
+            self.refresh()
+
+
 class CommandPaletteDialog(Gtk.Dialog):
     def __init__(
         self,
@@ -1303,6 +1437,12 @@ class PreferencesDialog(Gtk.Dialog):
         )
         self.command_marks = Gtk.Switch(active=preferences.command_marks)
         general.field("Marcar comandos na margem", self.command_marks, "Faixa ao lado de cada comando: cor de destaque se deu certo, vermelha se falhou.")
+        self.command_history = Gtk.Switch(active=preferences.command_history)
+        general.field(
+            "Guardar histórico de comandos", self.command_history,
+            "Ctrl+Shift+H busca os comandos de todas as abas. Fica só neste computador (permissão 0600); "
+            "comandos digitados com um espaço no início não são guardados.",
+        )
         self.notify_commands = Gtk.Switch(active=preferences.notify_commands)
         general.field(
             "Avisar quando um comando longo terminar",
@@ -1910,6 +2050,7 @@ class PreferencesDialog(Gtk.Dialog):
         target.notify_commands = self.notify_commands.get_active()
         target.shell_integration = self.shell_integration.get_active()
         target.command_marks = self.command_marks.get_active()
+        target.command_history = self.command_history.get_active()
         target.notify_after = self.notify_after.get_value_as_int()
         target.dropdown_height = self.dropdown_height.get_value_as_int()
         target.dropdown_autohide = self.dropdown_autohide.get_active()
@@ -1968,6 +2109,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
         self.viewers: dict[Gtk.Widget, TerminalPane | None] = {}
         self.broadcast_frames: set[Gtk.Frame] = set()
         self.connection_store = ConnectionStore()
+        self.history_store = HistoryStore()
         self.open_socket = (
             application.ensure_open_server() if isinstance(application, HackerTerminalApp) else None
         )
@@ -2073,6 +2215,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
             "broadcast": self.toggle_broadcast,
             "ssh_manager": self.show_ssh_manager,
             "rename_pane": self.rename_pane,
+            "command_history": self.show_command_history,
             "next_tab": lambda: self.cycle_tab(1),
             "previous_tab": lambda: self.cycle_tab(-1),
             "previous_prompt": lambda: self.jump_to_prompt(-1),
@@ -2547,6 +2690,8 @@ class HackerTerminal(Gtk.ApplicationWindow):
             self.toggle_broadcast(self.frame_for_pane(pane))
         elif action == "rename":
             self.rename_pane(pane)
+        elif action == "history":
+            self.show_command_history(pane)
 
     def rename_pane(self, pane: TerminalPane | None = None) -> None:
         pane = pane or self.get_active_terminal()
@@ -2597,6 +2742,11 @@ class HackerTerminal(Gtk.ApplicationWindow):
         """Exact result reported by the shell hooks (replaces /proc polling)."""
         if pane is self.get_active_terminal():
             self.update_status()
+        if self.preferences.command_history:
+            # Only informative places: a pane's name or an SSH connection.
+            place = pane.custom_name or pane.title_prefix
+            self.history_store.add(mark.command, mark.exit_status, mark.duration,
+                                   str(pane.current_working_directory()), place)
         if not self.preferences.notify_commands or mark.duration < self.preferences.notify_after:
             return
         self.on_command_finished(pane, mark.command.split()[0] if mark.command.split() else "comando",
@@ -2754,6 +2904,20 @@ class HackerTerminal(Gtk.ApplicationWindow):
             self.save_session()
             self.hide()
         return False
+
+    # ------------------------------------------------------ command history
+
+    def show_command_history(self, pane: TerminalPane | None = None) -> None:
+        pane = pane or self.get_active_terminal()
+        dialog = HistoryDialog(self, self.history_store, self.preferences.command_history and pane is not None
+                               and pane.config.preferences.shell_integration)
+        response = dialog.run()
+        chosen = dialog.selected_command()
+        dialog.destroy()
+        if response == Gtk.ResponseType.OK and chosen and pane is not None and pane.shell_running:
+            # Typed without Enter: the user reviews (or edits) before running.
+            pane.terminal.feed_child(chosen.encode())
+            pane.terminal.grab_focus()
 
     # ----------------------------------------------------------------- SSH
 
@@ -3206,6 +3370,7 @@ class HackerTerminal(Gtk.ApplicationWindow):
                 )
             )
         items.append(("Renomear painel…", "Painel", self.rename_pane))
+        items.append(("Histórico de comandos…", "Histórico", self.show_command_history))
         items.append(("Conexões SSH…", "SSH", self.show_ssh_manager))
         for connection in self.connection_store.load():
             items.append((f"SSH: {connection.name}", "SSH", lambda value=connection: self.connect_ssh(value)))

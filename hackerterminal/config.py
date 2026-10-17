@@ -85,6 +85,7 @@ class Preferences:
     notify_commands: bool = True
     notify_after: int = 10
     dropdown_height: int = 45
+    command_history: bool = True
     dropdown_autohide: bool = False
     key_switch: str = "brown"
     key_volume: int = 70
@@ -164,6 +165,7 @@ class ConfigStore:
                 notify_commands=self._boolean(section, "notify_commands", True),
                 notify_after=self._integer(section, "notify_after", 10),
                 dropdown_height=self._integer(section, "dropdown_height", 45),
+                command_history=self._boolean(section, "command_history", True),
                 dropdown_autohide=self._boolean(section, "dropdown_autohide", False),
                 key_switch=section.get("key_switch", "brown"),
                 key_volume=self._integer(section, "key_volume", 70),
@@ -211,6 +213,7 @@ class ConfigStore:
             "notify_commands": str(preferences.notify_commands).lower(),
             "notify_after": str(preferences.notify_after),
             "dropdown_height": str(preferences.dropdown_height),
+            "command_history": str(preferences.command_history).lower(),
             "dropdown_autohide": str(preferences.dropdown_autohide).lower(),
             "key_switch": preferences.key_switch,
             "key_volume": str(preferences.key_volume),

@@ -1082,6 +1082,7 @@ class TerminalPane(Gtk.Box):
             actions.append((label, lambda *_: self.on_output_action(self, "broadcast")))
         if self.on_output_action is not None:
             actions.append(("Renomear painel…", lambda *_: self.on_output_action(self, "rename")))
+            actions.append(("Histórico de comandos…", lambda *_: self.on_output_action(self, "history")))
             actions.append(("Salvar saída…", lambda *_: self.on_output_action(self, "save")))
             recording = "Parar gravação" if self.recorder is not None else "Gravar saída…"
             actions.append((recording, lambda *_: self.on_output_action(self, "record")))

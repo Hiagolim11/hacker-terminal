@@ -464,6 +464,57 @@ def main() -> int:
 
             from unittest.mock import patch as mock_patch
 
+            # Command history: recorded from the shell marks, searchable,
+            # and "Usar" types the command back without running it.
+            from hackerterminal.history import HistoryStore
+            from hackerterminal.terminal import PromptMark
+            import hackerterminal.ui as history_ui
+
+            window.history_store = HistoryStore(root / "history.jsonl")
+            window.new_tab(working_directory=root)  # its own tab: the line is left typed
+            history_pane = window.get_active_terminal()
+            if not wait_for(lambda: history_pane.shell_running, 10):
+                raise AssertionError("history tab shell did not start")
+            for command, status in (("echo HISTORICO-OK", 0), ("false", 1), (" echo segredo", 0)):
+                window.on_shell_command_done(history_pane, PromptMark(0, 0, 1, command, status, 0.2, True))
+            recorded = window.history_store.load()
+            if [e.command for e in recorded] != ["false", "echo HISTORICO-OK"]:
+                raise AssertionError(f"history recorded {[e.command for e in recorded]}")
+            history_dialog = history_ui.HistoryDialog(window, window.history_store, True)
+            history_dialog.only_failed.set_active(True)
+            if len(history_dialog.model) != 1 or history_dialog.selected_command() != "false":
+                raise AssertionError("the failure filter did not work")
+            history_dialog.only_failed.set_active(False)
+            history_dialog.search.set_text("historico")
+            wait_for(lambda: len(history_dialog.model) == 1, 3)
+            if history_dialog.selected_command() != "echo HISTORICO-OK":
+                raise AssertionError("search did not find the command")
+            history_dialog.destroy()
+
+            def choose_first(dialog):
+                dialog.search.set_text("HISTORICO")
+                wait_for(lambda: len(dialog.model) == 1, 3)
+                return Gtk.ResponseType.OK
+
+            with mock_patch.object(history_ui.HistoryDialog, "run", choose_first):
+                window.show_command_history(history_pane)
+
+            def typed_line():
+                row = history_pane.terminal.get_cursor_position()[1]
+                return history_pane.terminal.get_text_range_format(Vte.Format.TEXT, row, 0, row, 200)[0]
+
+            if not wait_for(lambda: "echo HISTORICO-OK" in typed_line(), 5):
+                raise AssertionError(f"the command was not typed: {typed_line()!r}")
+            wait_for(lambda: False, 0.5)
+            if "echo HISTORICO-OK" not in typed_line():
+                raise AssertionError("the command ran instead of waiting for Enter")
+            preferences.command_history = False
+            window.on_shell_command_done(history_pane, PromptMark(0, 0, 1, "nao-grava", 0, 0.1, True))
+            preferences.command_history = True
+            if any(e.command == "nao-grava" for e in window.history_store.load()):
+                raise AssertionError("history recorded with the option off")
+            window.close_page(window.frame_for_pane(history_pane), force=True)
+
             # A second window of the same process: fresh tabs, shared ht-open
             # socket routed to the pane's own window, preferences applied to both.
             second_window = application.open_window(AppConfig(preferences, (), root), restore=False, boot=False)

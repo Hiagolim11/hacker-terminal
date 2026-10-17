@@ -1543,3 +1543,46 @@ class InlineImageTests(unittest.TestCase):
         self.assertIn("\x1b[38;2;", text)
         with self.assertRaises(Exception):
             render_file(str(Path(__file__).parent / "fixtures" / "vendas.xlsx"), 20, 10)
+
+
+class CommandHistoryTests(unittest.TestCase):
+    def test_store_round_trip_privacy_and_trim(self) -> None:
+        from hackerterminal import history
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = history.HistoryStore(Path(directory) / "state" / "history.jsonl")
+            store.add("nmap -sV 10.0.0.5", 0, 12.5, "/home/kali", "🔒 Umbrel", finished_at=100)
+            self.assertIsNone(store.add(" mysql -p segredo", 0, 1))   # leading space: never stored
+            self.assertIsNone(store.add("   ", 0, 1))
+            store.add("false", 1, 0.01, finished_at=200)
+            self.assertEqual(store.path.stat().st_mode & 0o777, 0o600)
+            self.assertNotIn("segredo", store.path.read_text())
+            loaded = store.load()
+            self.assertEqual([entry.command for entry in loaded], ["false", "nmap -sV 10.0.0.5"])  # newest first
+            self.assertTrue(loaded[0].failed and not loaded[1].failed)
+            self.assertEqual(loaded[1].place, "🔒 Umbrel")
+            with store.path.open("a") as handle:  # damaged and hostile lines are skipped
+                handle.write("não é json\n{\"command\": 5}\n{\"command\": \" x\", \"finished_at\": 1}\n")
+                handle.write('{"command": "ok", "finished_at": 1, "status": true}\n')
+            self.assertEqual(len(store.load()), 2)
+            with patch.object(history, "MAX_ENTRIES", 3):
+                for index in range(5):
+                    store.add(f"echo {index}", 0, 0)
+                store.trim()
+                self.assertEqual([entry.command for entry in store.load()], ["echo 4", "echo 3", "echo 2"])
+            self.assertTrue(store.clear())
+            self.assertEqual(store.load(), [])
+
+    def test_search_words_failures_and_duplicates(self) -> None:
+        from hackerterminal.history import HistoryEntry, search
+
+        entries = [
+            HistoryEntry("nmap -sV 10.0.0.5", 0, 3, 300, "/srv/pentest", "Umbrel"),
+            HistoryEntry("make test", 2, 9, 200, "/home/kali/proj"),
+            HistoryEntry("nmap -sV 10.0.0.5", 1, 3, 100, "/srv/pentest"),
+        ]
+        self.assertEqual([e.finished_at for e in search(entries, "nmap")], [300])          # newest only
+        self.assertEqual(len(search(entries, "nmap", unique=False)), 2)
+        self.assertEqual([e.command for e in search(entries, only_failed=True)], ["make test", "nmap -sV 10.0.0.5"])
+        self.assertEqual([e.command for e in search(entries, "PENTEST umbrel")], ["nmap -sV 10.0.0.5"])  # every word, any field
+        self.assertEqual(search(entries, "inexistente"), [])
