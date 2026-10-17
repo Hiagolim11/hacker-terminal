@@ -348,6 +348,10 @@ rain = false
 
 ### Temas modernos
 
+<div align="center">
+<img src="docs/screenshots/modern-themes.png" alt="Os seis temas modernos: Zero Day, Neon Noir, Pôr do Sol Synth, Aurora, Grafite e Névoa" width="100%">
+</div>
+
 | Tema | Estilo |
 | --- | --- |
 | **Zero Day** | Hacker moderno: preto profundo, verde tóxico e chuva digital discreta |
@@ -360,6 +364,10 @@ rain = false
 Todos os temas internos são verificados com o critério de contraste WCAG: texto e cores ANSI com pelo menos 4,5:1 sobre o fundo, texto secundário (barra de status, dicas) com 4,5:1, e a cor 8 — usada pelas sugestões do zsh e por comentários — com pelo menos 3,5:1, para continuar discreta mas legível.
 
 ### Imagem de fundo
+
+<div align="center">
+<img src="docs/screenshots/background-image.png" alt="Imagem de fundo contínua através de três painéis divididos" width="80%">
+</div>
 
 Em *Preferências → Aparência → Imagem de fundo*, escolha qualquer imagem (PNG, JPEG, WebP, SVG…) para aparecer **atrás do texto**, em todos os painéis:
 
