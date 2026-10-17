@@ -2,6 +2,13 @@
 
 Este projeto segue [Semantic Versioning](https://semver.org/).
 
+## 0.20.0
+
+- **18 gravações de teclados reais incluídas**: os pacotes oficiais do Mechvibes (MIT), entre eles Cherry MX Black/Blue/Brown/Red em ABS e PBT, Holy Pandas, NK Cream, Topre e EG, aparecem direto em *Som do teclado → Switch*. Foram compactados de 21 MB para 2,5 MB, mantendo só os trechos de cada tecla em mono (`packaging/fetch_soundpacks.py`, a partir de um commit fixo). As licenças vão em `hackerterminal/soundpacks/LICENSE` e no `copyright` do `.deb`.
+- Pacotes Mechvibes no **formato 2** funcionam: variações aleatórias (`GENERIC_R{0-4}.mp3`), som de subida (`soundup`) e sons por tecla na subida (`"28-up"`). Arquivos que o pacote cita mas não tem caem no som genérico em vez de invalidar o pacote.
+- O **volume das gravações é nivelado** ao carregar (ganho entre ½× e 4×): os pacotes iam de quase inaudíveis a estourados.
+- Um pacote importado com o mesmo nome de um incluído tem prioridade.
+
 ## 0.19.0
 
 - **Interface mais limpa e moderna**: o terminal ocupa a janela inteira, sem moldura; cabeçalho, abas e barra de status usam a cor do terminal e se separam por linhas finas. O cabeçalho ficou com quatro botões — nova aba, paleta, painel e preferências; dividir, pesquisar, histórico e SSH continuam nos atalhos e na paleta. As abas viraram texto com um sublinhado na ativa e mostram a pasta (`~/projeto`) em vez de `usuário@máquina:`. A barra de status usa texto normal (`2 abas · git main`) e destaca em vermelho só o que pede atenção (`✗ saída 2`, gravando, transmitindo). Títulos de seção sem caixa alta e mais respiro em volta do texto do terminal.

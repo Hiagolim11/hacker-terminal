@@ -300,6 +300,11 @@ class SoundPack:
     identifier: str
     name: str
     path: Path
+    bundled: bool = False
+
+
+# Recorded packs shipped with the app (from Mechvibes, see soundpacks/LICENSE).
+BUNDLED_PACKS = Path(__file__).resolve().with_name("soundpacks")
 
 
 def decode_audio(path: Path) -> Samples:
@@ -365,14 +370,52 @@ def pack_name(path: Path) -> str:
     return path.name
 
 
+PACK_LEVEL = 18_000  # typical key peak after levelling, near the synthesized switches
+
+
+def _level(bank: SoundBank) -> SoundBank:
+    """Bring a recording to a common loudness: packs range from whispers to clipping."""
+    tables = [bank.per_key, bank.release_per_key] + [dict(enumerate(v)) for v in bank.sounds.values()]
+    press = bank.sounds.get(("press", "normal")) or list(bank.per_key.values())  # what most keys play
+    peaks = sorted(max(map(abs, samples), default=0) for samples in press)
+    if not peaks or not peaks[len(peaks) // 2]:
+        return bank
+    gain = max(0.5, min(4.0, PACK_LEVEL / peaks[len(peaks) // 2]))
+    if abs(gain - 1) < 0.05:
+        return bank
+    done: dict[int, Samples] = {}  # one sound can sit in several tables
+
+    def scaled(samples: Samples) -> Samples:
+        if id(samples) not in done:
+            done[id(samples)] = array.array("h", (max(-32768, min(32767, int(x * gain))) for x in samples))
+        return done[id(samples)]
+
+    bank.per_key = {key: scaled(samples) for key, samples in tables[0].items()}
+    bank.release_per_key = {key: scaled(samples) for key, samples in tables[1].items()}
+    bank.sounds = {group: [scaled(samples) for samples in options] for group, options in bank.sounds.items()}
+    return bank
+
+
 def load_pack(path: Path) -> SoundBank:
     """Load a Mechvibes pack or a folder of press/release recordings."""
     if not path.is_dir():
         raise PackError(f"pasta não encontrada: {path}")
     config = path / "config.json"
     if config.is_file():
-        return _load_mechvibes(path, config)
-    return _load_folder(path)
+        return _level(_load_mechvibes(path, config))
+    return _level(_load_folder(path))
+
+
+RANGE = re.compile(r"\{(\d+)-(\d+)\}")
+
+
+def _expand(name: str) -> list[str]:
+    """Mechvibes v2 variants: "press/GENERIC_R{0-4}.mp3" -> R0 … R4."""
+    match = RANGE.search(name)
+    if match is None:
+        return [name]
+    first, last = int(match.group(1)), int(match.group(2))
+    return [name[:match.start()] + str(i) + name[match.end():] for i in range(first, min(last, first + 31) + 1)]
 
 
 def _load_mechvibes(path: Path, config_path: Path) -> SoundBank:
@@ -387,39 +430,64 @@ def _load_mechvibes(path: Path, config_path: Path) -> SoundBank:
     kind = config.get("key_define_type", "single")
     decoded: dict[str, Samples] = {}
 
-    def file_samples(name: str) -> Samples:
+    def file_samples(name: str) -> Samples | None:
+        """A file of the pack, or None when the pack names one it lacks."""
         candidate = (path / name).resolve()
         if path.resolve() not in candidate.parents:
             raise PackError(f"arquivo fora do pacote: {name}")
+        if not candidate.is_file():
+            LOGGER.debug("pacote %s: arquivo ausente %s", path.name, name)
+            return None
         if name not in decoded:
             decoded[name] = decode_audio(candidate)
         return decoded[name]
 
-    by_code: dict[int, Samples] = {}
-    if kind == "multi":
-        for code, name in defines.items():
-            if isinstance(name, str) and name and str(code).isdigit():
-                by_code[int(code)] = _trim(file_samples(name))
-    else:
+    def files(field: str) -> list[Samples]:
+        name = config.get(field)
+        if not isinstance(name, str) or not name:
+            return []
+        return [_trim(samples) for item in _expand(name) if (samples := file_samples(item)) is not None]
+
+    # Mechvibes key codes, with "-up" for the sound of the key coming back.
+    by_code: dict[str, dict[int, Samples]] = {"press": {}, "release": {}}
+    sprite: Samples | None = None
+    if kind != "multi":
         sound = config.get("sound")
         if not isinstance(sound, str):
             raise PackError("config.json sem o arquivo 'sound'")
-        source = file_samples(sound)
-        for code, span in defines.items():
-            if not str(code).isdigit() or not isinstance(span, list) or len(span) != 2:
-                continue
-            start = int(float(span[0]) * RATE / 1000)
-            length = int(float(span[1]) * RATE / 1000)
-            if length > 0 and start < len(source):
-                by_code[int(code)] = _trim(source[start:start + length])
-    if not by_code:
+        sprite = file_samples(sound)
+        if sprite is None:
+            raise PackError(f"arquivo ausente: {sound}")
+    for code, value in defines.items():
+        code = str(code)
+        moment = "release" if code.endswith("-up") else "press"
+        code = code.removesuffix("-up")
+        if not code.isdigit():
+            continue
+        if kind == "multi":
+            samples = file_samples(value) if isinstance(value, str) and value else None
+        elif isinstance(value, list) and len(value) == 2:
+            start = int(float(value[0]) * RATE / 1000)
+            length = int(float(value[1]) * RATE / 1000)
+            samples = sprite[start:start + length] if length > 0 and start < len(sprite) else None
+        else:
+            samples = None
+        if samples:
+            by_code[moment][int(code)] = _trim(samples)
+    generic_press = files("sound") if kind == "multi" else []
+    generic_release = files("soundup")
+    if not by_code["press"] and not generic_press:
         raise PackError("o pacote não define nenhum som de tecla")
-    fallback = list(by_code.values())
     for evdev in range(1, 256):
         code = EVDEV_TO_UIOHOOK.get(evdev, evdev)
-        if code in by_code:
-            bank.per_key[evdev + 8] = by_code[code]  # X keycode = evdev + 8
-    bank.sounds[("press", "normal")] = fallback[: VARIANTS * 4]
+        if code in by_code["press"]:
+            bank.per_key[evdev + 8] = by_code["press"][code]  # X keycode = evdev + 8
+        if code in by_code["release"]:
+            bank.release_per_key[evdev + 8] = by_code["release"][code]
+    # Keys the pack does not name: its generic sounds, or a spread of its key sounds.
+    bank.sounds[("press", "normal")] = generic_press or list(by_code["press"].values())[: VARIANTS * 4]
+    if generic_release:
+        bank.sounds[("release", "normal")] = generic_release
     return bank
 
 
@@ -445,8 +513,7 @@ def packs_directory() -> Path:
     return base / "hacker-terminal" / "soundpacks"
 
 
-def list_packs(directory: Path | None = None) -> list[SoundPack]:
-    directory = directory or packs_directory()
+def _packs_in(directory: Path, bundled: bool) -> list[SoundPack]:
     if not directory.is_dir():
         return []
     packs = []
@@ -454,8 +521,23 @@ def list_packs(directory: Path | None = None) -> list[SoundPack]:
         if item.is_dir() and ((item / "config.json").is_file() or any(
             child.suffix.lower() in AUDIO_SUFFIXES for child in item.iterdir()
         )):
-            packs.append(SoundPack(item.name, pack_name(item), item))
+            packs.append(SoundPack(item.name, pack_name(item), item, bundled))
     return packs
+
+
+def list_packs(directory: Path | None = None, bundled: Path | None = BUNDLED_PACKS) -> list[SoundPack]:
+    """The user's imported packs, then the bundled ones; an imported pack wins a name clash."""
+    own = _packs_in(directory or packs_directory(), False)
+    taken = {pack.identifier for pack in own}
+    shipped = _packs_in(bundled, True) if bundled is not None else []
+    return own + sorted((pack for pack in shipped if pack.identifier not in taken), key=lambda pack: pack.name.casefold())
+
+
+def pack_path(identifier: str) -> Path:
+    """Where the pack named in a ``pack:<identifier>`` setting lives."""
+    name = Path(identifier).name
+    own = packs_directory() / name
+    return own if own.is_dir() or not (BUNDLED_PACKS / name).is_dir() else BUNDLED_PACKS / name
 
 
 # --------------------------------------------------------------------------
@@ -678,7 +760,7 @@ class KeySoundEngine:
         def work() -> None:
             try:
                 if source.startswith("pack:"):
-                    bank = load_pack(packs_directory() / Path(source[5:]).name)
+                    bank = load_pack(pack_path(source[5:]))
                 else:
                     bank = synth_bank(source)
                 error = None

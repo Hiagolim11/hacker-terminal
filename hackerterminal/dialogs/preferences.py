@@ -368,7 +368,8 @@ class PreferencesDialog(Gtk.Dialog):
         sound_page.heading("Pacotes gravados")
         sound_page.full(pack_actions)
         sound_page.hint(
-            "Para o som exato de um teclado real, importe uma gravação: pacotes Mechvibes "
+            "18 gravações de teclados reais do Mechvibes já vêm instaladas (Cherry MX, Topre, "
+            "Holy Pandas, NK Cream…) e aparecem em Switch. Para outra, importe um pacote Mechvibes "
             "(com config.json) ou uma pasta com press.wav, release.wav, space-press.wav etc."
         )
         self.pages.append_page(sound_page, Gtk.Label(label="Som do teclado"))
@@ -552,7 +553,7 @@ class PreferencesDialog(Gtk.Dialog):
         for identifier, label in SYNTH_SWITCHES.items():
             self.key_switch.append(identifier, f"{label} — sintetizado")
         for pack in list_packs():
-            self.key_switch.append(f"pack:{pack.identifier}", f"{pack.name} — gravado")
+            self.key_switch.append(f"pack:{pack.identifier}", f"{pack.name} — {'Mechvibes' if pack.bundled else 'importado'}")
         if not self.key_switch.set_active_id(selected):
             self.key_switch.set_active_id("brown")
 

@@ -674,7 +674,8 @@ class KeySoundTests(unittest.TestCase):
 
     def test_mechvibes_single_and_multi_packs(self) -> None:
         from hackerterminal import keysound
-        with tempfile.TemporaryDirectory() as directory:
+        # Which key gets which sound; loudness levelling has its own test.
+        with tempfile.TemporaryDirectory() as directory, patch.object(keysound, "_level", lambda bank: bank):
             single = Path(directory) / "single"
             single.mkdir()
             write_wav(single / "sound.wav", [100] * 4800 + [200] * 4800)
@@ -704,6 +705,61 @@ class KeySoundTests(unittest.TestCase):
             }), encoding="utf-8")
             with self.assertRaises(keysound.PackError):
                 keysound.load_pack(escape)
+
+    def test_mechvibes_v2_variants_release_sounds_and_missing_files(self) -> None:
+        from hackerterminal import keysound
+        with tempfile.TemporaryDirectory() as directory:
+            pack = Path(directory) / "travel"
+            (pack / "press").mkdir(parents=True)
+            (pack / "release").mkdir()
+            for index in range(3):
+                write_wav(pack / "press" / f"GENERIC_R{index}.wav", [3000 * (index + 2)] * 480)
+            write_wav(pack / "press" / "ENTER.wav", [5000] * 480)
+            write_wav(pack / "release" / "GENERIC.wav", [6000] * 480)
+            write_wav(pack / "release" / "ENTER.wav", [7000] * 480)
+            (pack / "config.json").write_text(json.dumps({
+                "name": "Travel", "key_define_type": "multi", "version": 2,
+                "sound": "press/GENERIC_R{0-3}.wav",  # R3 is missing, as in some real packs
+                "soundup": "release/GENERIC.wav",
+                "defines": {"28": "press/ENTER.wav", "28-up": "release/ENTER.wav",
+                            "57": "press/SPACE.wav", "57-up": "release/SPACE.wav"},
+            }), encoding="utf-8")
+            bank = keysound.load_pack(pack)
+            # Levelled to a common loudness: the middle of 6000/9000/12000 lands on PACK_LEVEL.
+            gain = keysound.PACK_LEVEL / 9000
+            self.assertEqual(sorted(s[0] for s in bank.sounds[("press", "normal")]), [int(6000 * gain), int(9000 * gain), int(12000 * gain)])
+            self.assertEqual(sorted(s[0] for s in bank.sounds[("press", "normal")])[1], keysound.PACK_LEVEL)
+            self.assertEqual(bank.pick("press", "enter", 28 + 8)[0], min(32767, int(5000 * gain)))
+            self.assertEqual(bank.pick("release", "enter", 28 + 8)[0], min(32767, int(7000 * gain)))
+            self.assertEqual(bank.pick("release", "normal", 30 + 8)[0], min(32767, int(6000 * gain)))
+            # SPACE files do not exist: the key falls back to the generic sounds instead of failing.
+            self.assertIn(bank.pick("press", "space", 57 + 8), bank.sounds[("press", "normal")])
+
+    def test_bundled_mechvibes_packs_all_load(self) -> None:
+        from hackerterminal import keysound
+        packs = keysound.list_packs(Path("/nonexistent"))
+        self.assertEqual(len(packs), 18)
+        self.assertTrue(all(pack.bundled for pack in packs))
+        self.assertIn("MIT License", (keysound.BUNDLED_PACKS / "LICENSE").read_text(encoding="utf-8"))
+        for pack in packs:
+            with self.subTest(pack=pack.identifier):
+                bank = keysound.load_pack(pack.path)
+                for keycode, size in ((30 + 8, "normal"), (28 + 8, "enter"), (57 + 8, "space")):
+                    self.assertGreater(len(bank.pick("press", size, keycode) or ()), 480)
+
+    def test_imported_pack_wins_over_a_bundled_one_with_its_name(self) -> None:
+        from hackerterminal import keysound
+        with tempfile.TemporaryDirectory() as directory:
+            own, shipped = Path(directory) / "own", Path(directory) / "shipped"
+            for root, name in ((own, "holy-pandas"), (shipped, "holy-pandas"), (shipped, "eg-oreo")):
+                (root / name).mkdir(parents=True)
+                write_wav(root / name / "press.wav", [100] * 48)
+            packs = keysound.list_packs(own, shipped)
+            self.assertEqual([(p.identifier, p.bundled) for p in packs], [("holy-pandas", False), ("eg-oreo", True)])
+            with patch.object(keysound, "BUNDLED_PACKS", shipped), patch.object(keysound, "packs_directory", return_value=own):
+                self.assertEqual(keysound.pack_path("holy-pandas"), own / "holy-pandas")
+                self.assertEqual(keysound.pack_path("eg-oreo"), shipped / "eg-oreo")
+                self.assertEqual(keysound.pack_path("../../etc"), own / "etc")
 
     def test_engine_keeps_playing_after_silence(self) -> None:
         """Regression: each output stream used to play once and then go mute."""

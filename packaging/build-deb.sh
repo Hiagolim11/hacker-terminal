@@ -47,11 +47,20 @@ install -D -m 644 "$project_dir/hackerterminal/shell/bash/integration.bash" \
 for source in "$project_dir"/hackerterminal/themes/*.ini; do
   install -m 644 "$source" "$package_root/usr/lib/$package/hackerterminal/themes/$(basename "$source")"
 done
+while IFS= read -r -d '' source; do
+  install -D -m 644 "$project_dir/$source" "$package_root/usr/lib/$package/$source"
+done < <(cd "$project_dir" && find hackerterminal/soundpacks -type f -print0)
 install -m 644 "$project_dir/assets/hacker-terminal.svg" \
   "$package_root/usr/share/icons/hicolor/scalable/apps/hacker-terminal.svg"
 install -m 644 "$project_dir/packaging/org.hackerterminal.HackerTerminal.metainfo.xml" \
   "$package_root/usr/share/metainfo/org.hackerterminal.HackerTerminal.metainfo.xml"
-install -m 644 "$project_dir/LICENSE" "$package_root/usr/share/doc/$package/copyright"
+{
+  cat "$project_dir/LICENSE"
+  printf '\n========================================================================\n'
+  printf 'usr/lib/%s/hackerterminal/soundpacks\n\n' "$package"
+  cat "$project_dir/hackerterminal/soundpacks/LICENSE"
+} > "$package_root/usr/share/doc/$package/copyright"
+chmod 644 "$package_root/usr/share/doc/$package/copyright"
 install -m 644 "$project_dir/README.md" "$package_root/usr/share/doc/$package/README.md"
 
 sed 's|@EXEC@|/usr/bin/hacker-terminal|g' \

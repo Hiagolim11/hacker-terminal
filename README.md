@@ -118,7 +118,7 @@ Por cima desse motor maduro, ele adiciona uma camada pensada para quem passa o d
 
 ### 🔊 Som e robustez
 - **Som de teclado mecânico**: switches Red, Brown e Blue
-- Pacotes gravados (formato **Mechvibes**) para o som exato
+- **18 gravações de teclados reais** do Mechvibes já incluídas (Cherry MX, Topre, Holy Pandas, NK Cream, EG…), e importação de outros pacotes
 - Motor de áudio de ~18 ms de latência
 - Confirmação de **colagem perigosa**
 - Log rotativo, captura de falhas e modo `--debug`
@@ -243,7 +243,7 @@ hacker-terminal --diagnose
 ```
 
 ```text
-Hacker Terminal 0.19.0
+Hacker Terminal 0.20.0
 GTK: 3.24.52
 VTE: 0.84.1
 Fonte selecionada: JetBrainsMono Nerd Font
@@ -506,9 +506,19 @@ Detalhes que deixam o som natural:
 
 #### Som exato com gravações reais
 
-Os sons sintetizados são aproximações. Para o som **idêntico** a um teclado real, use **Importar pacote…** com:
+Os sons sintetizados são aproximações. Para o som **idêntico** a um teclado real, escolha em **Switch** uma das 18 gravações que já vêm instaladas, os pacotes oficiais do [Mechvibes](https://github.com/hainguyents13/mechvibes) (MIT):
 
-1. **Pacotes do [Mechvibes](https://mechvibes.com/)** — a pasta com `config.json` (tipos `single` e `multi`). Há pacotes gravados de Cherry MX Red, Brown, Blue e muitos outros; cada tecla física usa o som definido para ela.
+| Família | Pacotes |
+| --- | --- |
+| Cherry MX | Black, Blue, Brown e Red, cada um com teclas ABS e PBT |
+| Full travel | MX Black, MX Blue, MX Brown, Turquoise e Full Creamy Goodness (som de descida e de subida) |
+| Outros | Holy Pandas, NK Cream, Topre Purple Hybrid, EG Crystal Purple e EG Oreo |
+
+O volume das gravações é nivelado ao carregar, para que trocar de pacote não faça o som sumir nem estourar. Elas foram compactadas por `packaging/fetch_soundpacks.py` (só os trechos de cada tecla, em mono): os 21 MB originais viraram 2,5 MB. As licenças estão em `hackerterminal/soundpacks/LICENSE`.
+
+Para outro teclado, use **Importar pacote…** com:
+
+1. **Um pacote do [Mechvibes](https://mechvibes.com/)**: a pasta com `config.json` (tipos `single` e `multi`, inclusive o formato 2 com variações `{0-4}` e som de subida). Cada tecla física usa o som definido para ela. Um pacote importado com o mesmo nome de um incluído tem prioridade.
 2. **Uma pasta com suas próprias gravações** (WAV, OGG, MP3, FLAC ou Opus), nomeadas assim:
 
 | Arquivo | Quando toca |
@@ -788,7 +798,7 @@ A interface fica em dois pacotes. A janela (`window/`) é uma classe principal c
 | `terminal.py` | Painel VTE: spawn do shell, integração (marcas de prompt), pesquisa, links, colagem segura, bell, zoom |
 | `themes.py` | Carrega e valida temas, gera o CSS do GTK, contraste WCAG, salva temas personalizados |
 | `shortcuts.py` | Lê, valida, casa e rotula atalhos (sem depender de display) |
-| `keysound.py`, `audio.py` | Síntese dos switches, pacotes gravados e o mixer; o GStreamer só carrega quando um som toca |
+| `keysound.py`, `soundpacks/` | Síntese dos switches, pacotes gravados (os incluídos e os importados) e o mixer; o GStreamer só carrega quando um som toca |
 | `history.py`, `connections.py`, `passwords.py` | Histórico de comandos; conexões SSH e `~/.ssh/config`; senhas no chaveiro do sistema |
 | `documents.py`, `viewer.py`, `openserver.py`, `inline_image.py` | Planilhas, aba de visualização, socket do `ht-open` e imagens desenhadas na saída |
 | `config.py`, `profiles.py`, `session.py`, `actions.py` | Persistência atômica de preferências, perfis, sessão e ações |

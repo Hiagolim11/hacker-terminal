@@ -54,6 +54,9 @@ install -d "$app_dir/hackerterminal/themes"
 for source in "$project_dir"/hackerterminal/themes/*.ini; do
   install -m 644 "$source" "$app_dir/hackerterminal/themes/$(basename "$source")"
 done
+while IFS= read -r -d '' source; do
+  install -D -m 644 "$project_dir/$source" "$app_dir/$source"
+done < <(cd "$project_dir" && find hackerterminal/soundpacks -type f -print0)
 install -m 644 "$project_dir/assets/hacker-terminal.svg" "$icon_dir/hacker-terminal.svg"
 launcher="$bin_dir/hacker-terminal"
 escaped_launcher="${launcher//\\/\\\\}"

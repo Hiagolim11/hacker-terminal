@@ -2,7 +2,7 @@
 
 APP_NAME = "hacker-terminal"
 APP_ID = "org.hackerterminal.HackerTerminal"
-VERSION = "0.19.0"
+VERSION = "0.20.0"
 DEFAULT_FONT_SIZE = 11
 DEFAULT_SCROLLBACK = 20_000
 DEFAULT_THEME = "minimal-dark"
