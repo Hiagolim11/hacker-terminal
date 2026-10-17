@@ -88,7 +88,8 @@ Por cima desse motor maduro, ele adiciona uma camada pensada para quem passa o d
 <td width="50%" valign="top">
 
 ### 🎨 Aparência
-- 13 temas internos — incluindo 8 temas **Fósforo** no estilo Cool Retro Term — e temas próprios
+- 22 temas internos — modernos (Zero Day, Neon Noir, Pôr do Sol Synth, Aurora, Grafite), 8 **Fósforo** no estilo Cool Retro Term, claros e de alto contraste — e temas próprios
+- Imagem de fundo atrás do texto, com opacidade e encaixe ajustáveis
 - **Editor visual de temas** (interface, terminal e 16 cores ANSI)
 - Detecção automática de **Nerd Fonts** e glifos Powerline
 - Cursor, negrito e opacidade configuráveis
@@ -344,6 +345,28 @@ rain = false
 
 > [!NOTE]
 > Os efeitos são desenhados por cima do texto, sem deformá-lo: a curvatura é simulada pelos cantos do tubo e pela sombra nas bordas, não distorcendo o conteúdo como o Cool Retro Term faz com a GPU. Em troca, o custo fica em torno de 3% de CPU com o terminal parado.
+
+### Temas modernos
+
+| Tema | Estilo |
+| --- | --- |
+| **Zero Day** | Hacker moderno: preto profundo, verde tóxico e chuva digital discreta |
+| **Neon Noir** | Noite cyberpunk em magenta e ciano, com brilho leve |
+| **Pôr do Sol Synth** | Synthwave: roxo profundo com laranja e rosa |
+| **Aurora** | Azul-marinho com verde-água e violeta |
+| **Grafite** | Minimalista: cinzas neutros e um único azul suave |
+| **Névoa (claro)** | Minimalista claro, cinza-azulado frio |
+
+Todos os temas internos são verificados com o critério de contraste WCAG: texto e cores ANSI com pelo menos 4,5:1 sobre o fundo, texto secundário (barra de status, dicas) com 4,5:1, e a cor 8 — usada pelas sugestões do zsh e por comentários — com pelo menos 3,5:1, para continuar discreta mas legível.
+
+### Imagem de fundo
+
+Em *Preferências → Aparência → Imagem de fundo*, escolha qualquer imagem (PNG, JPEG, WebP, SVG…) para aparecer **atrás do texto**, em todos os painéis:
+
+- **Opacidade da imagem** (5–90%): entre 15% e 30% ela aparece sem atrapalhar a leitura.
+- **Encaixe**: *Preencher* (cobre o painel, cortando as sobras), *Ajustar* (mostra a imagem inteira) ou *Lado a lado*.
+
+A cor do tema continua por baixo e o texto, por cima; os efeitos (chuva, scanlines, visual CRT) seguem por cima de tudo. Com o painel dividido, a imagem é calculada para a aba inteira, então ela continua sem emendas através das divisões. A imagem é carregada uma vez e reaproveitada por todos os painéis.
 
 ### Temas claro e de alto contraste
 

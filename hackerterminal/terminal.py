@@ -23,6 +23,7 @@ from .effects import EffectsLayer
 from .keysound import KeySoundEngine
 from .fonts import FontChoice, choose_font
 from .runtime import Atk, Gdk, Gio, GLib, Gtk, Pango, Vte
+from .background import BackgroundPainter, load as load_background
 from .session import clean_name
 from .sandbox import IN_FLATPAK, export_to_host, host_command, host_shell
 from .themes import Theme
@@ -480,6 +481,9 @@ class TerminalPane(Gtk.Box):
         self.last_mark_sequence = -1
         self.on_command_done: Callable[["TerminalPane", PromptMark], None] | None = None
         self.gutter_handler = 0
+        self.background = BackgroundPainter()
+        self.background_handler = 0
+        self.background_settings: tuple | None = None
         self.command_started: float | None = None
         self.command_name: str | None = None
         self.zoom_scroll = 0.0
@@ -588,6 +592,48 @@ class TerminalPane(Gtk.Box):
             rgba(theme.terminal_background, preferences.opacity / 100),
             [rgba(color) for color in theme.ansi],
         )
+        self.apply_background(theme)
+
+    def apply_background(self, theme: Theme) -> None:
+        """Image behind the text: VTE stops clearing and the pane paints it."""
+        preferences = self.config.preferences
+        pixbuf = load_background(preferences.background_image) if preferences.background_image else None
+        if pixbuf is None:
+            if self.background_handler:
+                self.terminal.disconnect(self.background_handler)
+                self.background_handler = 0
+            self.terminal.set_clear_background(True)
+            self.background.set_image(None)
+            self.background_settings = None
+            self.terminal.queue_draw()
+            return
+        self.background.set_image(pixbuf)
+        red, green, blue = (int(theme.terminal_background[index:index + 2], 16) / 255 for index in (1, 3, 5))
+        self.background_settings = (
+            (red, green, blue, preferences.opacity / 100),
+            preferences.background_opacity / 100,
+            preferences.background_fit,
+        )
+        self.terminal.set_clear_background(False)
+        if not self.background_handler:
+            # Before VTE's own drawing, so the text lands on top of the image.
+            self.background_handler = self.terminal.connect("draw", self.draw_background)
+        self.terminal.queue_draw()
+
+    def draw_background(self, widget, context) -> bool:
+        if self.background_settings is not None:
+            color, opacity, fit = self.background_settings
+            # Lay the image out over the whole tab, so splits show one picture.
+            frame = widget.get_ancestor(Gtk.Frame.__gtype__)
+            area, offset = None, (0, 0)
+            if frame is not None:
+                position = widget.translate_coordinates(frame, 0, 0)
+                if position is not None:
+                    area = (frame.get_allocated_width(), frame.get_allocated_height())
+                    offset = (position[0], position[1])
+            self.background.paint(context, widget.get_allocated_width(), widget.get_allocated_height(),
+                                  color, opacity, fit, area, offset)
+        return False
 
     def zoom(self, delta: int) -> None:
         preferences = self.config.preferences

@@ -9,6 +9,7 @@ import shutil
 from pathlib import Path
 
 from ..actions import ActionStore
+from ..background import FIT_LABELS
 from ..config import Preferences
 from ..constants import DEFAULT_THEME
 from .common import FormPage, choice_combo, confirm, mark_suggested, show_error
@@ -267,13 +268,44 @@ class PreferencesDialog(Gtk.Dialog):
         self.use_suggested_font.set_no_show_all(True)
         appearance.full(suggestion, column=1, width=1)
         appearance.field("Fonte", self.font)
-        appearance.field("Opacidade do fundo (%)", self.opacity)
+        appearance.field("Opacidade da janela (%)", self.opacity)
         composited = parent.get_screen() is not None and parent.get_screen().is_composited()
         appearance.hint(
             "Transparência ativa." if composited else "A transparência requer um compositor de janelas ativo.",
             column=1,
             width=1,
         )
+        appearance.heading("IMAGEM DE FUNDO")
+        self.background_path = preferences.background_image
+        self.background_chooser = Gtk.FileChooserButton(title="Escolher imagem de fundo", action=Gtk.FileChooserAction.OPEN)
+        images = Gtk.FileFilter()
+        images.set_name("Imagens")
+        images.add_pixbuf_formats()
+        self.background_chooser.add_filter(images)
+        if self.background_path and Path(self.background_path).expanduser().is_file():
+            self.background_chooser.set_filename(str(Path(self.background_path).expanduser()))
+        self.background_chooser.connect("file-set", self.on_background_chosen)
+        remove_background = Gtk.Button(label="Remover")
+        remove_background.connect("clicked", lambda *_: self.on_background_chosen(None))
+        background_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        background_row.pack_start(self.background_chooser, True, True, 0)
+        background_row.pack_start(remove_background, False, False, 0)
+        appearance.field("Imagem", background_row)
+        self.background_opacity = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 5, 90, 5)
+        self.background_opacity.set_value(preferences.background_opacity)
+        self.background_opacity.set_value_pos(Gtk.PositionType.RIGHT)
+        self.background_opacity.set_digits(0)
+        self.background_opacity.connect("format-value", lambda _scale, value: f"{value:.0f}%")
+        appearance.field("Opacidade da imagem", self.background_opacity)
+        self.background_fit = choice_combo(FIT_LABELS, preferences.background_fit)
+        appearance.field("Encaixe", self.background_fit)
+        appearance.hint(
+            "A imagem fica atrás do texto, em todos os painéis. Entre 15% e 30% ela aparece "
+            "sem atrapalhar a leitura.",
+            column=1,
+            width=1,
+        )
+        self.update_background_controls()
         appearance.heading("EFEITOS")
         appearance.field("Animação de abertura", self.boot)
         appearance.field("Efeitos visuais", self.effects)
@@ -742,6 +774,19 @@ class PreferencesDialog(Gtk.Dialog):
         self.apply_to(snapshot)
         return snapshot
 
+    def on_background_chosen(self, chooser) -> None:
+        if chooser is None:
+            self.background_path = ""
+            self.background_chooser.unselect_all()
+        else:
+            self.background_path = chooser.get_filename() or ""
+        self.update_background_controls()
+
+    def update_background_controls(self) -> None:
+        has_image = bool(self.background_path)
+        self.background_opacity.set_sensitive(has_image)
+        self.background_fit.set_sensitive(has_image)
+
     def apply_to(self, target: Preferences) -> None:
         target.profile = self.selected_profile()
         target.theme = self.selected_theme()
@@ -770,6 +815,9 @@ class PreferencesDialog(Gtk.Dialog):
         target.dropdown_height = self.dropdown_height.get_value_as_int()
         target.dropdown_autohide = self.dropdown_autohide.get_active()
         target.opacity = int(self.opacity.get_value())
+        target.background_image = self.background_path
+        target.background_opacity = int(self.background_opacity.get_value())
+        target.background_fit = self.background_fit.get_active_id() or "cover"
         target.cursor_shape = self.cursor_shape.get_active_id() or "block"
         target.cursor_blink = self.cursor_blink.get_active_id() or "system"
         target.bold_is_bright = self.bold_is_bright.get_active()

@@ -276,7 +276,7 @@ class ThemeTests(unittest.TestCase):
     def test_builtin_themes_are_valid_and_complete(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             manager = ThemeManager(Path(directory))
-            self.assertEqual(len(manager.all()), 16)  # 5 classic + 8 phosphor + red alert, light, high contrast
+            self.assertEqual(len(manager.all()), 22)  # 5 classic + 8 phosphor + red alert, 2 light, high contrast, 5 modern
             self.assertFalse(manager.errors)
             for theme in manager.all():
                 self.assertEqual(len(theme.ansi), 16)
@@ -1586,3 +1586,36 @@ class CommandHistoryTests(unittest.TestCase):
         self.assertEqual([e.command for e in search(entries, only_failed=True)], ["make test", "nmap -sV 10.0.0.5"])
         self.assertEqual([e.command for e in search(entries, "PENTEST umbrel")], ["nmap -sV 10.0.0.5"])  # every word, any field
         self.assertEqual(search(entries, "inexistente"), [])
+
+
+class BackgroundImageTests(unittest.TestCase):
+    def test_placement_cover_contain_tile(self) -> None:
+        from hackerterminal.background import placement
+
+        self.assertEqual(placement((200, 100), (100, 100), "cover"), (1.0, -50.0, 0.0))      # crops the sides evenly
+        self.assertEqual(placement((200, 100), (100, 100), "contain"), (0.5, 0.0, 25.0))     # whole image, centred
+        self.assertEqual(placement((200, 100), (100, 100), "tile"), (1.0, 0.0, 0.0))
+        self.assertEqual(placement((0, 0), (100, 100), "cover"), (1.0, 0.0, 0.0))            # broken size: no crash
+
+    def test_preferences_round_trip_and_limits(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = ConfigStore(Path(directory) / "config.ini")
+            preferences = Preferences(background_image=" ~/fundo.png ", background_opacity=150, background_fit="esticar")
+            preferences.normalize()
+            self.assertEqual((preferences.background_image, preferences.background_opacity, preferences.background_fit),
+                             ("~/fundo.png", 90, "cover"))
+            store.save(preferences)
+            loaded = store.load()
+            self.assertEqual((loaded.background_image, loaded.background_opacity, loaded.background_fit),
+                             ("~/fundo.png", 90, "cover"))
+            self.assertEqual(Preferences().background_image, "")  # off by default
+
+    def test_unreadable_images_are_ignored(self) -> None:
+        from hackerterminal.background import load
+
+        with tempfile.TemporaryDirectory() as directory:
+            broken = Path(directory) / "quebrada.png"
+            broken.write_bytes(b"nao e uma imagem")
+            self.assertIsNone(load(str(broken)))
+            self.assertIsNone(load(str(Path(directory) / "nao-existe.png")))
+            self.assertIsNotNone(load(str(Path(__file__).parent / "fixtures" / "gradiente.png")))

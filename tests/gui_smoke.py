@@ -511,6 +511,43 @@ def main() -> int:
                 raise AssertionError("history recorded with the option off")
             window.close_page(window.frame_for_pane(history_pane), force=True)
 
+            # Background image: drawn behind the text at the chosen opacity.
+            import cairo
+            from gi.repository import GdkPixbuf
+
+            red_image = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, False, 8, 64, 64)
+            red_image.fill(0xFF0000FF)
+            red_image.savev(str(root / "fundo.png"), "png", [], [])
+            image_pane = window.get_active_terminal()
+
+            def pixel_at_corner():
+                width, height = image_pane.terminal.get_allocated_width(), image_pane.terminal.get_allocated_height()
+                surface = cairo.ImageSurface(cairo.FORMAT_RGB24, width, height)
+                image_pane.terminal.draw(cairo.Context(surface))
+                data = surface.get_data()
+                offset = (height - 3) * surface.get_stride() + (width - 3) * 4  # empty bottom-right corner
+                return data[offset + 2], data[offset + 1], data[offset]  # BGRx -> RGB
+
+            theme_rgb = tuple(int(window.active_theme.terminal_background[i:i + 2], 16) for i in (1, 3, 5))
+            preferences.background_image, preferences.background_opacity = str(root / "fundo.png"), 50
+            window.preferences_changed()
+            wait_for(lambda: False, 0.3)
+            expected = (round(255 * 0.5 + theme_rgb[0] * 0.5), round(theme_rgb[1] * 0.5), round(theme_rgb[2] * 0.5))
+            seen = pixel_at_corner()
+            if any(abs(a - b) > 3 for a, b in zip(seen, expected)):
+                raise AssertionError(f"background image not blended: pixel {seen}, expected {expected}")
+            preferences.background_image = ""
+            window.preferences_changed()
+            wait_for(lambda: False, 0.3)
+            if any(abs(a - b) > 3 for a, b in zip(pixel_at_corner(), theme_rgb)):
+                raise AssertionError(f"background stayed after removing the image: {pixel_at_corner()}")
+            preferences.background_image = str(root / "nao-existe.png")
+            window.preferences_changed()  # a missing file must not break the pane
+            if image_pane.background_handler or image_pane.background_settings is not None:
+                raise AssertionError("a missing background image left the pane half configured")
+            preferences.background_image = ""
+            window.preferences_changed()
+
             # A second window of the same process: fresh tabs, shared ht-open
             # socket routed to the pane's own window, preferences applied to both.
             second_window = application.open_window(AppConfig(preferences, (), root), restore=False, boot=False)

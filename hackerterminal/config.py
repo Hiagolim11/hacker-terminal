@@ -86,6 +86,9 @@ class Preferences:
     notify_after: int = 10
     dropdown_height: int = 45
     command_history: bool = True
+    background_image: str = ""
+    background_opacity: int = 25
+    background_fit: str = "cover"
     dropdown_autohide: bool = False
     key_switch: str = "brown"
     key_volume: int = 70
@@ -108,6 +111,9 @@ class Preferences:
         self.key_volume = clamp(int(self.key_volume), 0, 100)
         self.notify_after = clamp(int(self.notify_after), 3, 3600)
         self.dropdown_height = clamp(int(self.dropdown_height), 25, 90)
+        self.background_image = str(self.background_image or "").strip()
+        self.background_opacity = clamp(int(self.background_opacity), 5, 90)
+        self.background_fit = self.background_fit if self.background_fit in ("cover", "contain", "tile") else "cover"
         self.shortcuts = {
             str(key).strip(): str(value).strip()
             for key, value in (self.shortcuts or {}).items()
@@ -166,6 +172,9 @@ class ConfigStore:
                 notify_after=self._integer(section, "notify_after", 10),
                 dropdown_height=self._integer(section, "dropdown_height", 45),
                 command_history=self._boolean(section, "command_history", True),
+                background_image=section.get("background_image", ""),
+                background_opacity=self._integer(section, "background_opacity", 25),
+                background_fit=section.get("background_fit", "cover"),
                 dropdown_autohide=self._boolean(section, "dropdown_autohide", False),
                 key_switch=section.get("key_switch", "brown"),
                 key_volume=self._integer(section, "key_volume", 70),
@@ -214,6 +223,9 @@ class ConfigStore:
             "notify_after": str(preferences.notify_after),
             "dropdown_height": str(preferences.dropdown_height),
             "command_history": str(preferences.command_history).lower(),
+            "background_image": preferences.background_image,
+            "background_opacity": str(preferences.background_opacity),
+            "background_fit": preferences.background_fit,
             "dropdown_autohide": str(preferences.dropdown_autohide).lower(),
             "key_switch": preferences.key_switch,
             "key_volume": str(preferences.key_volume),
