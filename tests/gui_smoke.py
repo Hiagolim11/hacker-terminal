@@ -799,6 +799,16 @@ def main() -> int:
                 raise AssertionError("sidebar actions are missing")
             if not all(button.get_visible() for button in window.action_panel.action_buttons):
                 raise AssertionError("sidebar actions are not visible")
+            # Opened from hidden (the default), the panel must show its actions on screen,
+            # not just an empty box: get_visible() alone did not catch that.
+            preferences.panel_visible = False
+            window.apply_panel_visibility()
+            window.toggle_panel()
+            deadline = time.monotonic() + 3
+            while not all(b.get_mapped() for b in window.action_panel.action_buttons) and time.monotonic() < deadline:
+                Gtk.main_iteration_do(False)
+            if not window.action_panel.get_mapped() or not all(b.get_mapped() for b in window.action_panel.action_buttons):
+                raise AssertionError("the side panel opened empty: its actions were not drawn")
             horizontal, vertical = window.action_panel.scroller.get_policy()
             if horizontal != Gtk.PolicyType.NEVER or vertical != Gtk.PolicyType.AUTOMATIC:
                 raise AssertionError("sidebar does not have responsive scrolling")

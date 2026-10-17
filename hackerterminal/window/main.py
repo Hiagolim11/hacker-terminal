@@ -712,7 +712,12 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
             return
         visible = self.panel_peek if self.panel_auto_hidden else self.preferences.panel_visible
         self.action_panel.set_no_show_all(not visible)
-        self.action_panel.set_visible(visible)
+        if visible:
+            # A panel that was hidden when the window opened was skipped by
+            # show_all(), so its buttons were never shown: show them too.
+            self.action_panel.show_all()
+        else:
+            self.action_panel.hide()
 
     def update_status(self) -> None:
         tabs = len(self.page_panes)
