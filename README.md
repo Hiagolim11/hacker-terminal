@@ -239,7 +239,7 @@ hacker-terminal --diagnose
 ```
 
 ```text
-Hacker Terminal 0.17.0
+Hacker Terminal 0.18.0
 GTK: 3.24.52
 VTE: 0.84.1
 Fonte selecionada: JetBrainsMono Nerd Font
@@ -280,6 +280,7 @@ Estes são os padrões — **todos podem ser alterados** em *Preferências → A
 | `Ctrl+Shift+↑` / `↓` | Comando anterior / seguinte | | `Ctrl+Shift+L` | Copiar saída do último comando |
 | `Ctrl+Shift+I` | Digitar em todos os painéis | | `Ctrl+Shift+S` | Conexões SSH |
 | `Ctrl+Shift+R` | Renomear painel | | `F12` (global, opcional) | Terminal suspenso |
+| `Ctrl+Shift+H` | Histórico de comandos | | | |
 
 Para listar os atalhos em uso (incluindo os seus):
 
@@ -532,6 +533,16 @@ Com zsh ou bash, o terminal carrega pequenos ganchos (sem mexer nos seus arquivo
 
 Requer VTE 0.78 ou mais novo (`hacker-terminal --diagnose` informa). Desligue em *Preferências → Geral* ou com `HACKER_TERMINAL_SHELL_INTEGRATION=0`.
 
+### Histórico de comandos
+
+`Ctrl+Shift+H` (ou botão direito → **Histórico de comandos…**, ou a paleta) busca os comandos que você rodou **em todas as abas e janelas**, inclusive em sessões anteriores. Cada linha mostra se deu certo (✓) ou falhou (✗ e o código), quando foi, quanto durou e onde (pasta, nome do painel ou conexão SSH).
+
+- A busca considera todas as palavras, no comando, na pasta e no lugar: `nmap 10.0.0` acha o `nmap -sV 10.0.0.5` de ontem.
+- **Só falhas** mostra apenas o que deu errado; **Mostrar repetidos** lista cada execução em vez de só a mais recente.
+- **Usar no terminal** (ou duplo clique/Enter) digita o comando no painel **sem apertar Enter**, para você revisar ou editar antes de rodar. **Copiar** leva para a área de transferência.
+
+O histórico depende da integração com o shell, fica só neste computador em `~/.local/state/hacker-terminal/history.jsonl` (permissão `0600`, os 5.000 mais recentes) e pode ser desligado em *Preferências → Geral* ou apagado em **Limpar histórico…**. Como no bash e no zsh, **um comando digitado com um espaço no início não é guardado** — útil quando ele contém uma senha.
+
 ### Digitar em todos os painéis
 
 `Ctrl+Shift+I` (ou botão direito → **Digitar em todos os painéis da aba**) envia o que você digita para todos os painéis da aba — útil para rodar o mesmo comando em vários servidores. A moldura fica vermelha e a barra de status mostra `⇉ TRANSMITINDO PARA N` enquanto estiver ligado.
@@ -579,6 +590,8 @@ Use a extensão **`.html`** para manter as cores do tema ou **`.txt`** para text
 ## 🖼️ Visualizar imagens e planilhas
 
 Abra imagens e planilhas **sem sair do terminal**: elas aparecem numa aba de visualização ao lado do terminal de onde vieram.
+
+Para ver uma imagem **direto na saída**, use `ht-open --inline foto.png` (ou `-i`; `--width 40` limita a largura em colunas). A imagem é desenhada com blocos coloridos em cores reais, cabe na largura e na altura da janela e respeita a transparência, então fica certa em temas claros e escuros. Se o VTE do seu sistema tiver suporte a **sixel**, ele também é ativado (programas como `img2sixel` e `chafa -f sixel` passam a funcionar); `hacker-terminal --diagnose` diz se está disponível — no Debian/Kali o VTE vem sem sixel, e o `--inline` funciona em qualquer caso.
 
 <div align="center">
 <img src="docs/screenshots/viewer-sheet.png" alt="Planilha XLSX no visualizador" width="100%">
@@ -694,7 +707,11 @@ hacker-terminal [opções] [-e COMANDO ...]
 | `--debug` | Mensagens detalhadas no terminal e no log |
 | `--version` | Mostra a versão |
 
-Dentro do terminal também existe o comando **`ht-open ARQUIVO…`**, que abre imagens e planilhas no visualizador.
+| `--separate` | Abre a janela num processo próprio (veja abaixo) |
+
+Dentro do terminal também existe o comando **`ht-open ARQUIVO…`**, que abre imagens e planilhas no visualizador, e **`ht-open --inline IMAGEM`**, que desenha a imagem na própria saída.
+
+**Um processo para todas as janelas.** Com o Hacker Terminal já aberto, `hacker-terminal` (pelo menu, atalho ou terminal) entrega a nova janela ao processo existente antes mesmo de carregar o GTK: ela abre em ~0,4 s e três janelas usam ~150 MB, em vez de ~470 MB em três processos. As preferências mudam em todas as janelas de uma vez, e só a primeira restaura a sessão salva. Opções que mudam a aparência de uma janela (`--theme`, `--profile`, `--font`, `--font-size`, `--no-effects`, `--no-sound`, `--no-panel`) abrem um processo próprio, assim como `--separate` ou a variável `HACKER_TERMINAL_SEPARATE=1`. O terminal suspenso (`--dropdown`) também tem o seu.
 
 ---
 
@@ -704,30 +721,37 @@ Dentro do terminal também existe o comando **`ht-open ARQUIVO…`**, que abre i
 
 ```mermaid
 flowchart LR
-    CLI["cli.py<br/>argumentos e bootstrap"] --> UI["ui.py<br/>janela, abas, diálogos"]
-    UI --> TP["terminal.py<br/>TerminalPane (VTE + PTY)"]
-    UI --> CFG["config.py<br/>preferências atômicas"]
-    UI --> TH["themes.py<br/>temas + CSS GTK"]
-    UI --> PR["profiles.py<br/>perfis"]
-    UI --> SC["shortcuts.py<br/>atalhos remapeáveis"]
-    UI --> AC["actions.py<br/>ações rápidas"]
-    UI --> SE["session.py<br/>sessão e autosave"]
-    TP --> FX["effects.py<br/>chuva digital e scanlines"]
+    L["hacker_terminal.py<br/>+ launcher.py"] -->|"já aberto: entrega a janela via D-Bus"| APP
+    L --> CLI["cli.py<br/>argumentos e bootstrap"] --> APP["app.py<br/>processo único, ht-open, avisos"]
+    APP --> W["window/<br/>janela principal + recursos"]
+    W --> D["dialogs/<br/>preferências, SSH, histórico…"]
+    W --> TP["terminal.py<br/>TerminalPane (VTE + PTY)"]
+    W --> ST["config · themes · profiles<br/>session · history · connections"]
+    TP --> FX["effects.py<br/>chuva digital e CRT"]
     TP --> KS["keysound.py<br/>som do teclado"]
     TP --> SH(["seu shell<br/>zsh · bash · fish"])
 ```
 
+A interface fica em dois pacotes. A janela (`window/`) é uma classe principal composta por *mixins*, um por recurso, para que cada arquivo tenha um assunto só:
+
 | Módulo | Responsabilidade |
 | --- | --- |
-| `cli.py` | Analisa argumentos, aplica perfil/tema, configura o log e inicia o `Gtk.Application` |
-| `ui.py` | Janela principal, abas, painéis, cabeçalho, barra de status e todos os diálogos |
-| `terminal.py` | Painel VTE: spawn do shell, pesquisa, links, colagem segura, bell, zoom |
-| `themes.py` | Carrega e valida temas, gera o CSS do GTK, salva temas personalizados |
+| `launcher.py` | Antes de carregar o GTK, entrega uma nova janela ao Hacker Terminal já aberto (só `Gio`, ~25 ms) |
+| `cli.py`, `app.py` | Argumentos, perfil/tema e log; o `Gtk.Application` com um processo para todas as janelas, socket do `ht-open` e notificações |
+| `window/main.py` | `HackerTerminal`: cabeçalho, abas, sessão, preferências, barra de status e fechamento |
+| `window/panes.py`, `commands.py`, `output.py` | Divisões e transmissão; avisos, saltos e histórico de comandos; salvar/gravar saída e renomear painéis |
+| `window/ssh.py`, `dropdown.py`, `viewer.py` | Abas SSH e acesso por chave; terminal suspenso; abas do visualizador |
+| `window/panel.py`, `boot.py` | Painel lateral de ações; animação de abertura |
+| `dialogs/` | Preferências, editores (atalhos, temas, perfis), ações e `{campos}`, SSH, histórico, paleta e utilitários comuns |
+| `terminal.py` | Painel VTE: spawn do shell, integração (marcas de prompt), pesquisa, links, colagem segura, bell, zoom |
+| `themes.py` | Carrega e valida temas, gera o CSS do GTK, contraste WCAG, salva temas personalizados |
 | `shortcuts.py` | Lê, valida, casa e rotula atalhos (sem depender de display) |
-| `keysound.py` | Síntese dos switches, pacotes gravados e o mixer de áudio |
-| `documents.py`, `viewer.py`, `openserver.py` | Leitores de planilhas, aba de visualização e o socket do `ht-open` |
+| `keysound.py`, `audio.py` | Síntese dos switches, pacotes gravados e o mixer; o GStreamer só carrega quando um som toca |
+| `history.py`, `connections.py`, `passwords.py` | Histórico de comandos; conexões SSH e `~/.ssh/config`; senhas no chaveiro do sistema |
+| `documents.py`, `viewer.py`, `openserver.py`, `inline_image.py` | Planilhas, aba de visualização, socket do `ht-open` e imagens desenhadas na saída |
 | `config.py`, `profiles.py`, `session.py`, `actions.py` | Persistência atômica de preferências, perfis, sessão e ações |
 | `effects.py` | Desenha a chuva digital e o visual CRT (brilho, curvatura, vinheta, ruído) por cima do VTE |
+| `dropdown.py`, `sandbox.py` | Geometria e atalho global do terminal suspenso; execução no host dentro do Flatpak |
 | `fonts.py`, `project.py`, `logs.py` | Detecção de Nerd Fonts, contexto Git/venv e log rotativo |
 
 ### O terminal

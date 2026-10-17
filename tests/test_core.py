@@ -1500,7 +1500,7 @@ class LazyStartupTests(unittest.TestCase):
     def test_gstreamer_is_not_loaded_until_a_sound_plays(self) -> None:
         code = (
             "import sys\n"
-            "import hackerterminal.ui, hackerterminal.keysound, hackerterminal.audio\n"
+            "import hackerterminal.app, hackerterminal.keysound, hackerterminal.audio\n"
             "from hackerterminal.audio import SoundPlayer\n"
             "player = SoundPlayer(None, 0.3)\n"
             "print('gi.repository.Gst' in sys.modules)\n"

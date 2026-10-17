@@ -37,9 +37,9 @@ install -D -m 755 "$project_dir/bin/ht-open" "$package_root/usr/lib/$package/bin
 install -D -m 755 "$project_dir/bin/ht-askpass" "$package_root/usr/lib/$package/bin/ht-askpass"
 install -D -m 755 "$project_dir/bin/ht-copy-key" "$package_root/usr/lib/$package/bin/ht-copy-key"
 ln -s "../lib/$package/bin/ht-open" "$package_root/usr/bin/ht-open"
-for source in "$project_dir"/hackerterminal/*.py; do
-  install -m 644 "$source" "$package_root/usr/lib/$package/hackerterminal/$(basename "$source")"
-done
+while IFS= read -r -d '' source; do
+  install -D -m 644 "$project_dir/$source" "$package_root/usr/lib/$package/$source"
+done < <(cd "$project_dir" && find hackerterminal -name '*.py' -not -path '*/__pycache__/*' -print0)
 install -D -m 644 "$project_dir/hackerterminal/shell/zsh/.zshenv" \
   "$package_root/usr/lib/$package/hackerterminal/shell/zsh/.zshenv"
 install -D -m 644 "$project_dir/hackerterminal/shell/bash/integration.bash" \

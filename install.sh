@@ -42,10 +42,12 @@ done
 
 mkdir -p -- "$app_dir" "$bin_dir" "$desktop_dir" "$icon_dir"
 install -m 755 "$project_dir/hacker_terminal.py" "$app_dir/hacker_terminal.py"
-install -d "$app_dir/hackerterminal"
-for source in "$project_dir"/hackerterminal/*.py; do
-  install -m 644 "$source" "$app_dir/hackerterminal/$(basename "$source")"
-done
+# Only the code folder is replaced (modules removed in a new version must
+# not linger); sound packs and other data next to it stay untouched.
+rm -rf -- "$app_dir/hackerterminal"
+while IFS= read -r -d '' source; do
+  install -D -m 644 "$project_dir/$source" "$app_dir/$source"
+done < <(cd "$project_dir" && find hackerterminal -name '*.py' -not -path '*/__pycache__/*' -print0)
 install -D -m 644 "$project_dir/hackerterminal/shell/zsh/.zshenv" "$app_dir/hackerterminal/shell/zsh/.zshenv"
 install -D -m 644 "$project_dir/hackerterminal/shell/bash/integration.bash" "$app_dir/hackerterminal/shell/bash/integration.bash"
 install -d "$app_dir/hackerterminal/themes"

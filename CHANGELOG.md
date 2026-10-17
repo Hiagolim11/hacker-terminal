@@ -2,6 +2,16 @@
 
 Este projeto segue [Semantic Versioning](https://semver.org/).
 
+## 0.18.0
+
+- **Abre mais rápido e usa menos memória**: as janelas agora compartilham um processo. Com o Hacker Terminal aberto, uma nova janela é entregue ao processo existente antes de carregar o GTK e abre em ~0,4 s (antes 1,2–1,8 s); três janelas usam ~150 MB em vez de ~470 MB. Opções que mudam a aparência (`--theme`, `--profile`, `--font`…) e o novo `--separate` abrem um processo próprio. Mudanças nas Preferências valem para todas as janelas, só a primeira restaura a sessão e erros (como uma pasta inexistente) voltam para quem pediu a janela.
+- O áudio (GStreamer) só é carregado quando um som toca de verdade; antes era preparado sempre, mesmo com som e animação desligados (~130 ms a menos na abertura).
+- **Imagens na saída do terminal**: `ht-open --inline IMAGEM` desenha imagens com blocos em cores reais, respeitando a transparência, em qualquer VTE. Sixel é ativado quando o VTE tem suporte (`--diagnose` informa; o do Debian/Kali não tem).
+- **Histórico de comandos** (`Ctrl+Shift+H`): busca nos comandos de todas as abas e sessões, com resultado, duração e pasta; filtro de falhas; "Usar no terminal" digita o comando sem executar. Fica só no computador (`0600`), pode ser desligado e comandos digitados com espaço no início não são guardados.
+- Corrige um travamento (falha de segmentação) ao fechar uma janela logo depois de trocar de aba, e um temporizador das Preferências que podia agir depois de o diálogo fechar.
+- Corrige a marca de prompt do bash, que às vezes ficava uma linha acima e fazia "Copiar saída do último comando" incluir o próprio comando; agora a marca sai no fim do prompt, como no zsh.
+- Código reorganizado: o arquivo da interface (3.800 linhas) foi dividido em `app.py`, `window/` (janela principal e um módulo por recurso) e `dialogs/`; o instalador e o `.deb` copiam os subpacotes e removem módulos antigos.
+
 ## 0.17.0
 
 - **Acesso por chave** (botão novo no gerenciador SSH): cria sua chave SSH, se ainda não existir, e a instala no servidor com `ssh-copy-id`. Você digita a senha do servidor uma última vez; depois o login é automático e nenhuma senha fica guardada. Opções como `-J bastiao` são convertidas para o formato que o `ssh-copy-id` entende.

@@ -19,7 +19,7 @@ from .session import SessionStore
 from .shortcuts import SHORTCUT_ACTIONS, ShortcutMap, accelerator_label
 from .terminal import resolve_shell
 from .themes import ThemeManager
-from .ui import HackerTerminalApp
+from .app import HackerTerminalApp
 
 
 def build_parser() -> argparse.ArgumentParser:

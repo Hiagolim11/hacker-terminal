@@ -21,17 +21,13 @@ from hackerterminal.profiles import ProfileManager
 from hackerterminal.runtime import Gdk, GLib, Gtk, Vte
 from hackerterminal.session import SessionState, SessionStore, SessionTab
 from hackerterminal.themes import ThemeManager
-from hackerterminal.ui import (
-    ActionEditorDialog,
-    BootScreen,
-    CommandPaletteDialog,
-    FieldsDialog,
-    HackerTerminal,
-    HackerTerminalApp,
-    PreferencesDialog,
-    ProfileEditorDialog,
-    ThemeEditorDialog,
-)
+from hackerterminal.app import HackerTerminalApp
+from hackerterminal.dialogs.actions import ActionEditorDialog, FieldsDialog
+from hackerterminal.dialogs.editors import ProfileEditorDialog, ThemeEditorDialog
+from hackerterminal.dialogs.palette import CommandPaletteDialog
+from hackerterminal.dialogs.preferences import PreferencesDialog
+from hackerterminal.window.boot import BootScreen
+from hackerterminal.window.main import HackerTerminal
 
 
 def main() -> int:
@@ -366,7 +362,7 @@ def main() -> int:
 
             # SSH manager: creating connections through "Nova…" (the editor's
             # modal run() is simulated; everything else is the real path).
-            import hackerterminal.ui as ssh_ui
+            import hackerterminal.dialogs.ssh as ssh_ui
             from unittest.mock import patch as ssh_patch
             from hackerterminal.connections import ConnectionStore
 
@@ -468,7 +464,7 @@ def main() -> int:
             # and "Usar" types the command back without running it.
             from hackerterminal.history import HistoryStore
             from hackerterminal.terminal import PromptMark
-            import hackerterminal.ui as history_ui
+            import hackerterminal.dialogs.history as history_ui
 
             window.history_store = HistoryStore(root / "history.jsonl")
             window.new_tab(working_directory=root)  # its own tab: the line is left typed
@@ -688,7 +684,7 @@ def main() -> int:
             if window.action_store is not action_store or len(window.action_panel.action_buttons) != base_actions:
                 raise AssertionError("switching profile did not restore the shared actions")
             # Drop-down shortcut section, against a fake xfconf (never the real one).
-            import hackerterminal.ui as ui_module
+            import hackerterminal.dialogs.preferences as ui_module
             import hackerterminal.dropdown as dropdown_module
             from unittest.mock import patch as mock_patch
 
