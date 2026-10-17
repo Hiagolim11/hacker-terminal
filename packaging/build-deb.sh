@@ -34,6 +34,8 @@ install -d \
 
 install -m 755 "$project_dir/hacker_terminal.py" "$package_root/usr/lib/$package/hacker_terminal.py"
 install -D -m 755 "$project_dir/bin/ht-open" "$package_root/usr/lib/$package/bin/ht-open"
+install -D -m 755 "$project_dir/bin/ht-askpass" "$package_root/usr/lib/$package/bin/ht-askpass"
+install -D -m 755 "$project_dir/bin/ht-copy-key" "$package_root/usr/lib/$package/bin/ht-copy-key"
 ln -s "../lib/$package/bin/ht-open" "$package_root/usr/bin/ht-open"
 for source in "$project_dir"/hackerterminal/*.py; do
   install -m 644 "$source" "$package_root/usr/lib/$package/hackerterminal/$(basename "$source")"
@@ -71,7 +73,7 @@ Priority: optional
 Architecture: all
 Maintainer: $maintainer
 Depends: python3 (>= 3.10), python3-gi, python3-gi-cairo, gir1.2-gtk-3.0, gir1.2-vte-2.91, hicolor-icon-theme
-Recommends: librsvg2-common, python3-gst-1.0, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, fonts-hack
+Recommends: gir1.2-secret-1, librsvg2-common, python3-gst-1.0, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, fonts-hack
 Description: professional native terminal for Linux
  Hacker Terminal is a lightweight GTK 3 and VTE terminal with tabs, split
  panes, session restoration, project context, history search, validated custom

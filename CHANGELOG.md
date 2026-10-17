@@ -2,6 +2,13 @@
 
 Este projeto segue [Semantic Versioning](https://semver.org/).
 
+## 0.17.0
+
+- **Acesso por chave** (botão novo no gerenciador SSH): cria sua chave SSH, se ainda não existir, e a instala no servidor com `ssh-copy-id`. Você digita a senha do servidor uma última vez; depois o login é automático e nenhuma senha fica guardada. Opções como `-J bastiao` são convertidas para o formato que o `ssh-copy-id` entende.
+- **Senha no chaveiro do sistema**: o editor da conexão ganhou um campo de senha. Ela fica criptografada no chaveiro (gnome-keyring/KWallet, aberto pelo seu login), nunca nos arquivos do terminal, e o `ssh` a recebe por um programa auxiliar (`ht-askpass`): não é digitada na tela nem vai para o histórico. A senha salva é enviada uma única vez por conexão; se o servidor recusar, a senha é pedida no terminal (sem eco), evitando bloqueios por tentativas repetidas. Outras perguntas do `ssh`, como confirmar a impressão digital do servidor, continuam aparecendo no terminal. Conexões com senha salva aparecem com 🔑; remover a conexão apaga a senha dela. Requer o pacote `gir1.2-secret-1` (recomendado pelo `.deb`).
+- Testes de ponta a ponta com um chaveiro isolado, um `ssh` real e um servidor SSH temporário, sem tocar no chaveiro nem no `~/.ssh` do usuário.
+- O teste de instalação não depende mais de temas personalizados do usuário.
+
 ## 0.16.1
 
 - Corrige o erro “identificador inválido” ao criar uma conexão SSH em **Nova…**: o identificador interno passa a ser gerado a partir do nome antes da validação. Um teste cobre agora a criação e a edição pelo gerenciador.

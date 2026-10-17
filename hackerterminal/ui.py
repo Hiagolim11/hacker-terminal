@@ -40,7 +40,8 @@ from .project import detect_project_context
 from .runtime import Gdk, GdkX11, Gio, GLib, Gtk, Pango
 from .session import MAX_PANES_PER_TAB, SessionState, SessionStore, SessionTab
 from .shortcuts import MODIFIER_MASK, SHORTCUT_ACTIONS, ShortcutMap, accelerator_label, accelerator_name
-from .terminal import TerminalPane, format_duration, shell_argv
+from . import passwords
+from .terminal import TerminalPane, format_duration, host_files, shell_argv
 from .themes import THEME_COLOR_FIELDS, Theme, ThemeManager, ThemeError
 
 LOGGER = logging.getLogger(__name__)
@@ -552,8 +553,34 @@ class ConnectionEditorDialog(Gtk.Dialog):
         page.heading("SEGURANÇA VISUAL")
         page.field("Tema da aba", self.theme, "Use um tema chamativo, como Alerta Vermelho, para servidores de produção.")
         page.field("Confirmar antes de conectar", self.confirm_switch)
-        page.hint("Senhas nunca são guardadas: o ssh pede a senha ou usa sua chave/agente, como de costume.")
+        page.heading("SENHA")
+        self.password: Gtk.Entry | None = None
+        self.forget_password: Gtk.CheckButton | None = None
+        saved = connection is not None and not connection.from_ssh_config and passwords.has_password(connection.identifier)
+        if passwords.available():
+            self.password = Gtk.Entry(visibility=False, input_purpose=Gtk.InputPurpose.PASSWORD)
+            self.password.set_placeholder_text(
+                "salva no chaveiro — digite para trocar" if saved else "opcional — guardada no chaveiro do sistema"
+            )
+            page.field("Senha do servidor", self.password)
+            if saved:
+                self.forget_password = Gtk.CheckButton(label="Esquecer a senha salva")
+                page.full(self.forget_password)
+            page.hint(
+                "A senha fica criptografada no chaveiro do sistema (aberto pelo seu login), nunca nos arquivos do "
+                "terminal, e só responde à pergunta de senha deste servidor. Mais seguro ainda: use "
+                "“Acesso por chave…” no gerenciador e não guarde senha nenhuma."
+            )
+        else:
+            page.hint("Para guardar senhas no chaveiro, instale o pacote gir1.2-secret-1. Ou use “Acesso por chave…”.")
         self.show_all()
+
+    def password_change(self) -> tuple[str, str]:
+        """("keep", ""), ("set", password) or ("forget", "")."""
+        if self.forget_password is not None and self.forget_password.get_active():
+            return "forget", ""
+        typed = self.password.get_text() if self.password is not None else ""
+        return ("set", typed) if typed else ("keep", "")
 
     def value(self, identifier: str | None, taken: set[str] = frozenset()) -> Connection:
         """The connection typed in; a new one (identifier None) gets a free id from its name."""
@@ -571,6 +598,9 @@ class ConnectionEditorDialog(Gtk.Dialog):
         )
         validate_connection(connection)
         return connection
+
+
+KEY_SETUP_RESPONSE = 1
 
 
 class SSHManagerDialog(Gtk.Dialog):
@@ -594,7 +624,11 @@ class SSHManagerDialog(Gtk.Dialog):
         scroller.add(self.listbox)
         body.pack_start(scroller, True, True, 0)
         controls = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
-        for label, callback in (("Nova…", self.add), ("Editar…", self.edit), ("Remover", self.remove)):
+        buttons = (
+            ("Nova…", self.add), ("Editar…", self.edit), ("Remover", self.remove),
+            ("Acesso por chave…", self.request_key_setup),
+        )
+        for label, callback in buttons:
             button = Gtk.Button(label=label)
             button.connect("clicked", lambda *_args, action=callback: action())
             controls.pack_start(button, False, False, 0)
@@ -618,6 +652,8 @@ class SSHManagerDialog(Gtk.Dialog):
             title = Gtk.Label(xalign=0)
             badge = "  · do ~/.ssh/config" if connection.from_ssh_config else ""
             lock = "⚠ " if connection.confirm else ""
+            if not connection.from_ssh_config and passwords.has_password(connection.identifier):
+                badge += "  · 🔑 senha no chaveiro"
             title.set_markup(f"<b>{GLib.markup_escape_text(lock + connection.name)}</b>{GLib.markup_escape_text(badge)}")
             detail = Gtk.Label(label=connection.command_line(), xalign=0)
             detail.set_ellipsize(Pango.EllipsizeMode.END)
@@ -649,7 +685,13 @@ class SSHManagerDialog(Gtk.Dialog):
                 break
             except (ConnectionError, ValueError) as error:
                 show_error(editor, "Conexão inválida", str(error))
+        change, secret = editor.password_change()
         editor.destroy()
+        if result is not None:
+            if change == "set" and not passwords.store(result.identifier, result.name, secret):
+                show_error(self, "Senha não guardada", "O chaveiro do sistema não está disponível ou recusou a senha.")
+            elif change == "forget":
+                passwords.forget(result.identifier)
         return result
 
     def add(self) -> None:
@@ -671,6 +713,10 @@ class SSHManagerDialog(Gtk.Dialog):
             saved.append(updated)
         self.persist(saved, updated.identifier)
 
+    def request_key_setup(self) -> None:
+        if self.selected_connection() is not None:
+            self.response(KEY_SETUP_RESPONSE)
+
     def remove(self) -> None:
         current = self.selected_connection()
         if current is None:
@@ -678,7 +724,8 @@ class SSHManagerDialog(Gtk.Dialog):
         if current.from_ssh_config:
             show_error(self, "Host do ~/.ssh/config", "Remova este host editando o seu ~/.ssh/config.")
             return
-        if confirm(self, f"Remover “{current.name}”?", "Somente a conexão salva é apagada.", "Remover"):
+        if confirm(self, f"Remover “{current.name}”?", "A conexão e a senha salva dela são apagadas.", "Remover"):
+            passwords.forget(current.identifier)
             self.persist([item for item in self.saved() if item.identifier != current.identifier])
 
     def persist(self, connections: list[Connection], select: str | None = None) -> None:
@@ -2703,10 +2750,41 @@ class HackerTerminal(Gtk.ApplicationWindow):
     def show_ssh_manager(self) -> None:
         dialog = SSHManagerDialog(self, self.connection_store, self.theme_manager)
         response = dialog.run()
-        chosen = dialog.selected_connection() if response == Gtk.ResponseType.OK else None
+        chosen = dialog.selected_connection()
         dialog.destroy()
-        if chosen is not None:
+        if chosen is None:
+            return
+        if response == Gtk.ResponseType.OK:
             self.connect_ssh(chosen)
+        elif response == KEY_SETUP_RESPONSE:
+            self.setup_ssh_key(chosen)
+
+    def ssh_tab(self, connection: Connection, prefix: str, command: str) -> TerminalPane | None:
+        """A tab named after the connection, with its theme, that types ``command``."""
+        self.new_tab(working_directory=Path.home())
+        pane = self.get_active_terminal()
+        if pane is None:
+            return None
+        pane.title_prefix = f"{prefix} {connection.name}"
+        theme = self.theme_manager.themes.get(connection.theme) if connection.theme else None
+        if theme is not None:
+            pane.theme_override = theme
+            pane.apply_preferences(self.active_theme)
+        self.on_terminal_title_changed(pane, connection.destination)
+        # Typed into the user's own shell: a failed connection stays visible
+        # and leaving the host returns to the local shell.
+        if pane.shell_running:
+            pane.run_command(command)
+        else:
+            pane.pending_input = command
+        return pane
+
+    def setup_ssh_key(self, connection: Connection) -> TerminalPane | None:
+        tools = host_files("bin")
+        if tools is None or not (tools / "ht-copy-key").is_file():
+            show_error(self, "Ferramenta ausente", "ht-copy-key não foi encontrado na instalação.")
+            return None
+        return self.ssh_tab(connection, "🔑", connection.key_setup_command(tools / "ht-copy-key"))
 
     def connect_ssh(self, connection: Connection) -> TerminalPane | None:
         if connection.confirm and not confirm(
@@ -2716,23 +2794,16 @@ class HackerTerminal(Gtk.ApplicationWindow):
             "Conectar",
         ):
             return None
-        self.new_tab(working_directory=Path.home())
-        pane = self.get_active_terminal()
-        if pane is None:
-            return None
-        pane.title_prefix = f"🔒 {connection.name}"
-        theme = self.theme_manager.themes.get(connection.theme) if connection.theme else None
-        if theme is not None:
-            pane.theme_override = theme
-            pane.apply_preferences(self.active_theme)
-        self.on_terminal_title_changed(pane, connection.destination)
-        # Typed into the user's own shell: a failed connection stays visible
-        # and leaving the host returns to the local shell.
-        if pane.shell_running:
-            pane.run_command(connection.command_line())
-        else:
-            pane.pending_input = connection.command_line()
-        return pane
+        askpass = None
+        tools = host_files("bin")
+        if (
+            not connection.from_ssh_config
+            and tools is not None
+            and (tools / "ht-askpass").is_file()
+            and passwords.has_password(connection.identifier)
+        ):
+            askpass = tools / "ht-askpass"
+        return self.ssh_tab(connection, "🔒", connection.command_line(askpass))
 
     # ----------------------------------------------------------- broadcast
 

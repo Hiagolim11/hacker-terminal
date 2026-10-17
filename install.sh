@@ -65,6 +65,8 @@ rm -f -- "$desktop_dir/hacker-terminal.desktop"
 
 install -d "$app_dir/bin"
 install -m 755 "$project_dir/bin/ht-open" "$app_dir/bin/ht-open"
+install -m 755 "$project_dir/bin/ht-askpass" "$app_dir/bin/ht-askpass"
+install -m 755 "$project_dir/bin/ht-copy-key" "$app_dir/bin/ht-copy-key"
 if [ -e "$bin_dir/ht-open" ] && [ "$(readlink -- "$bin_dir/ht-open")" != "$app_dir/bin/ht-open" ]; then
   printf '%s\n' "Aviso: $bin_dir/ht-open já existe e não foi alterado." >&2
 else

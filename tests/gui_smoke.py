@@ -392,6 +392,46 @@ def main() -> int:
             edited = {c.identifier: (c.name, c.destination) for c in ssh_store.load_saved()}
             if edited != {"umbrel": ("Umbrel", "umbrel@10.0.0.3"), "umbrel-2": ("Renomeado", "umbrel@10.0.0.4")}:
                 raise AssertionError(f"editing an SSH connection failed: {ssh_store.load_saved()}")
+            # Saved password (fake keyring) and key setup.
+            fake_keyring: dict[str, str] = {}
+            keyring_patches = ssh_patch.multiple(
+                ssh_ui.passwords, available=lambda: True,
+                has_password=lambda ident: ident in fake_keyring,
+                store=lambda ident, label, secret: fake_keyring.__setitem__(ident, secret) or True,
+                forget=lambda ident: fake_keyring.pop(ident, None) is not None,
+            )
+            with keyring_patches:
+                def typed_with_password(editor):
+                    editor.password.set_text("s3nh@")
+                    return Gtk.ResponseType.OK
+
+                with ssh_patch.object(ssh_ui.ConnectionEditorDialog, "run", typed_with_password):
+                    manager.edit()  # umbrel-2 is still selected
+                if fake_keyring != {"umbrel-2": "s3nh@"}:
+                    raise AssertionError(f"password not stored in the keyring: {fake_keyring}")
+                if "salva no chaveiro" not in ssh_ui.ConnectionEditorDialog(manager, themes, manager.selected_connection()).password.get_placeholder_text():
+                    raise AssertionError("the editor does not say a password is saved")
+                saved_connection = manager.selected_connection()
+                pages_before_key = window.notebook.get_n_pages()
+                pane_with_password = window.connect_ssh(saved_connection)
+                key_pane = window.setup_ssh_key(saved_connection)
+                if window.notebook.get_n_pages() != pages_before_key + 2:
+                    raise AssertionError("SSH tabs were not opened")
+                def screen_of(pane):
+                    row = pane.terminal.get_cursor_position()[1]
+                    return pane.terminal.get_text_range_format(Vte.Format.TEXT, 0, 0, row + 1, 400)[0]
+
+                for pane, expected in ((pane_with_password, "ht-askpass"), (key_pane, "ht-copy-key")):
+                    if not wait_for(lambda: expected in screen_of(pane), 15):
+                        raise AssertionError(f"{expected} was not typed: {screen_of(pane)[-300:]!r}")
+                    if "s3nh@" in screen_of(pane):
+                        raise AssertionError("the saved password appeared on screen")
+                for pane in (pane_with_password, key_pane):
+                    window.close_page(window.frame_for_pane(pane), force=True)
+                with ssh_patch.object(ssh_ui, "confirm", lambda *a: True):
+                    manager.remove()
+                if fake_keyring:
+                    raise AssertionError("removing the connection kept its password")
             manager.destroy()
 
             # SSH: a failing connection stays visible in its own themed tab.

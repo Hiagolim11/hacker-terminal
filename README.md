@@ -239,7 +239,7 @@ hacker-terminal --diagnose
 ```
 
 ```text
-Hacker Terminal 0.16.1
+Hacker Terminal 0.17.0
 GTK: 3.24.52
 VTE: 0.84.1
 Fonte selecionada: JetBrainsMono Nerd Font
@@ -547,7 +547,12 @@ Requer VTE 0.78 ou mais novo (`hacker-terminal --diagnose` informa). Desligue em
 - **tema próprio** — use o **Alerta Vermelho** para produção e nunca confunda as janelas;
 - **confirmação antes de conectar**.
 
-O comando é digitado no seu shell, então um erro de conexão fica visível e, ao sair do servidor, você volta ao shell local. Senhas nunca são guardadas (o `ssh` usa sua chave/agente ou pede a senha). As conexões ficam em `~/.config/hacker-terminal/ssh.ini` (permissão `0600`).
+O comando é digitado no seu shell, então um erro de conexão fica visível e, ao sair do servidor, você volta ao shell local. As conexões ficam em `~/.config/hacker-terminal/ssh.ini` (permissão `0600`), sem senhas.
+
+#### Entrar sem digitar a senha
+
+- **Acesso por chave…** (recomendado): selecione a conexão e clique no botão. Uma aba cria sua chave SSH (se ainda não existir) e a instala no servidor; digite a senha dele uma última vez. Depois disso o login é automático, e nenhuma senha fica guardada em lugar nenhum — vale também para `scp`, `rsync` e o `ssh` do terminal comum.
+- **Senha no chaveiro**: para servidores que não aceitam chave, preencha **Senha do servidor** no editor da conexão. A senha fica criptografada no chaveiro do sistema (aberto pelo seu login) e é entregue ao `ssh` por um programa auxiliar, sem aparecer na tela nem no histórico. Ela é enviada uma única vez por conexão: se o servidor recusar, a senha é pedida no terminal. Perguntas como a confirmação da impressão digital do servidor continuam aparecendo para você. Conexões com senha salva mostram 🔑; **Esquecer a senha salva** ou remover a conexão apaga a senha. Requer o pacote `gir1.2-secret-1`.
 
 ### Terminal suspenso (estilo Quake)
 

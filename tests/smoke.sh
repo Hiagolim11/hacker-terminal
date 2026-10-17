@@ -10,14 +10,18 @@ export NO_AT_BRIDGE=1
 
 python3 -m compileall -q hacker_terminal.py hackerterminal tests/test_core.py tests/gui_smoke.py tests/shell_integration.py
 python3 -m py_compile bin/ht-open
+python3 -m py_compile bin/ht-askpass
+sh -n bin/ht-copy-key
+test -x bin/ht-askpass
+test -x bin/ht-copy-key
 zsh -n hackerterminal/shell/zsh/.zshenv 2>/dev/null || ! command -v zsh >/dev/null
 bash -n hackerterminal/shell/bash/integration.bash
 test -x bin/ht-open
 bin/ht-open --help | grep -F "ht-open ARQUIVO" >/dev/null
 bash -n run.sh install.sh tests/smoke.sh packaging/build-deb.sh
 python3 hacker_terminal.py --help >/dev/null
-python3 hacker_terminal.py --version | grep -F "0.16.1" >/dev/null
-test "$(python3 hacker_terminal.py --list-themes | wc -l)" -eq 16
+python3 hacker_terminal.py --version | grep -F "0.17.0" >/dev/null
+test "$(python3 hacker_terminal.py --list-themes | grep -c "	interno$")" -eq 16
 test "$(python3 hacker_terminal.py --list-profiles | wc -l)" -eq 4
 python3 -m unittest -v tests.test_core
 
@@ -48,6 +52,9 @@ else
   ./run.sh --diagnose
   printf '%s\n' "SKIP: smoke gráfico (use HACKER_TERMINAL_GUI_TEST=1 com xvfb-run)" >&2
 fi
+if command -v dbus-run-session >/dev/null && command -v gnome-keyring-daemon >/dev/null; then
+  dbus-run-session -- env HT_PRIVATE_BUS=1 python3 tests/ssh_access.py
+fi
 
 test_home="$test_dir/home with spaces"
 test_data="$test_dir/data with spaces"
@@ -55,9 +62,11 @@ mkdir -p "$test_home"
 HOME="$test_home" XDG_DATA_HOME="$test_data" ./install.sh
 test -x "$test_home/.local/bin/hacker-terminal"
 HOME="$test_home" XDG_DATA_HOME="$test_data" "$test_home/.local/bin/hacker-terminal" --version \
-  | grep -F '0.16.1' >/dev/null
+  | grep -F '0.17.0' >/dev/null
 test -f "$test_data/hacker-terminal/hackerterminal/themes/matrix-green.ini"
 test -x "$test_home/.local/bin/ht-open"
+test -x "$test_data/hacker-terminal/bin/ht-askpass"
+test -x "$test_data/hacker-terminal/bin/ht-copy-key"
 test -f "$test_data/hacker-terminal/hackerterminal/shell/zsh/.zshenv"
 test -f "$test_data/hacker-terminal/hackerterminal/shell/bash/integration.bash"
 "$test_home/.local/bin/ht-open" --help >/dev/null
@@ -73,13 +82,15 @@ if command -v dpkg-deb >/dev/null; then
   dpkg-deb --info "$artifact" >/dev/null
   dpkg-deb --contents "$artifact" | grep -F './usr/bin/hacker-terminal' >/dev/null
   dpkg-deb --contents "$artifact" | grep -F './usr/bin/ht-open -> ../lib/hacker-terminal/bin/ht-open' >/dev/null
+  dpkg-deb --contents "$artifact" | grep -F './usr/lib/hacker-terminal/bin/ht-askpass' >/dev/null
+  dpkg-deb --contents "$artifact" | grep -F './usr/lib/hacker-terminal/bin/ht-copy-key' >/dev/null
   dpkg-deb --contents "$artifact" | grep -F './usr/lib/hacker-terminal/hackerterminal/shell/zsh/.zshenv' >/dev/null
   dpkg-deb --contents "$artifact" | grep -F './usr/lib/hacker-terminal/hackerterminal/shell/bash/integration.bash' >/dev/null
   dpkg-deb --contents "$artifact" \
     | grep -F './usr/lib/hacker-terminal/hackerterminal/themes/matrix-green.ini' >/dev/null
   dpkg-deb --extract "$artifact" "$test_dir/package-root"
   python3 "$test_dir/package-root/usr/lib/hacker-terminal/hacker_terminal.py" --version \
-    | grep -F '0.16.1' >/dev/null
+    | grep -F '0.17.0' >/dev/null
   desktop-file-validate \
     "$test_dir/package-root/usr/share/applications/org.hackerterminal.HackerTerminal.desktop"
 fi

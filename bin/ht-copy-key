@@ -1,0 +1,19 @@
+#!/bin/sh
+# Set up key login for a Hacker Terminal SSH connection.
+# Usage: ht-copy-key NAME KEY_FILE [ssh-copy-id options] DESTINATION
+name=$1
+key=$2
+shift 2
+if [ ! -f "$key" ]; then
+  printf '%s\n' "Criando sua chave SSH em $key."
+  printf '%s\n' "Se pedir uma frase-senha, você pode deixar vazio (Enter) ou criar uma para proteger a chave."
+  mkdir -p "$(dirname "$key")" && chmod 700 "$(dirname "$key")" || exit 1
+  ssh-keygen -t ed25519 -f "$key" -C hacker-terminal || exit 1
+fi
+printf '%s\n' "Enviando a chave para $name. Digite a senha do servidor (será a última vez):"
+if ssh-copy-id -i "$key.pub" "$@"; then
+  printf '\033[32m%s\033[0m\n' "✓ Chave instalada: as próximas conexões a $name não pedem senha."
+else
+  printf '\033[31m%s\033[0m\n' "✗ A chave não foi instalada. Confira a senha e se o servidor aceita login por chave."
+  exit 1
+fi

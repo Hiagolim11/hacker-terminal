@@ -50,8 +50,66 @@ class Connection:
         argv.append(self.destination)
         return argv
 
-    def command_line(self) -> str:
-        return shlex.join(self.command())
+    def command_line(self, askpass: Path | None = None) -> str:
+        """The ssh command; with ``askpass`` a saved password answers the prompt.
+
+        Only the connection's identifier goes on the command line; the
+        helper fetches the password from the keyring itself.
+        """
+        line = shlex.join(self.command())
+        if askpass is None:
+            return line
+        variables = {
+            "SSH_ASKPASS": str(askpass),
+            "SSH_ASKPASS_REQUIRE": "force",
+            "HACKER_TERMINAL_SSH_ID": self.identifier,
+        }
+        # env works in any shell (fish has no "VAR=value command").
+        return shlex.join(["env", *(f"{key}={value}" for key, value in variables.items())]) + " " + line
+
+    def key_file(self) -> str:
+        """Private key used for this host: its own, or the default ed25519 key."""
+        return self.identity_file or "~/.ssh/id_ed25519"
+
+    def key_setup_command(self, helper: Path) -> str:
+        """Run ht-copy-key: create the key if needed and install it with ssh-copy-id.
+
+        ssh-copy-id only understands -p, -i and -o; other extra options
+        (like -J) are passed as their -o equivalents when possible.
+        """
+        key = str(Path(self.key_file()).expanduser())
+        arguments = [str(helper), self.name, key]
+        if self.port:
+            arguments += ["-p", str(self.port)]
+        arguments += copy_id_options(self.options)
+        arguments.append(self.destination)
+        return shlex.join(arguments)
+
+
+def copy_id_options(options: str) -> list[str]:
+    """Translate the ssh options ssh-copy-id cannot take into -o form."""
+    result: list[str] = []
+    try:
+        words = shlex.split(options)
+    except ValueError:
+        return result
+    index = 0
+    while index < len(words):
+        word, following = words[index], words[index + 1] if index + 1 < len(words) else None
+        if word == "-o" and following is not None:
+            result += ["-o", following]
+            index += 2
+        elif word.startswith("-o") and len(word) > 2:
+            result += ["-o", word[2:]]
+            index += 1
+        elif word == "-J" and following is not None:
+            result += ["-o", f"ProxyJump={following}"]
+            index += 2
+        elif word == "-i" and following is not None:
+            index += 2  # the key being installed is passed separately
+        else:
+            index += 1  # flags such as -A or -X do not matter for copying a key
+    return result
 
 
 def validate(connection: Connection) -> None:

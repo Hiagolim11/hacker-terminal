@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""SSH_ASKPASS helper for Hacker Terminal's saved SSH connections.
+
+ssh runs it for every question when SSH_ASKPASS_REQUIRE=force is set:
+- a password prompt, the first time for this ssh process, is answered with
+  the password saved in the system keyring for HACKER_TERMINAL_SSH_ID;
+- anything else (host key confirmation, a rejected password, key
+  passphrases, codes) is asked on the terminal, exactly as ssh would.
+"""
+
+import os
+import re
+import sys
+import termios
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+PASSWORD_PROMPT = re.compile(r"password:\s*$", re.IGNORECASE)
+HIDDEN_PROMPT = re.compile(r"(password|passphrase|pin|code|token|otp)", re.IGNORECASE)
+
+
+def ssh_process_key() -> str:
+    """Identifies the ssh that called us (PID plus start time, so PIDs can be reused)."""
+    parent = os.getppid()
+    try:
+        fields = Path(f"/proc/{parent}/stat").read_text().rsplit(")", 1)[1].split()
+        return f"{parent}-{fields[19]}"
+    except (OSError, IndexError):
+        return str(parent)
+
+
+def first_password_attempt() -> bool:
+    """True once per ssh process: a refused saved password is not sent again."""
+    base = os.environ.get("XDG_RUNTIME_DIR") or "/tmp"
+    directory = Path(base) / f"hacker-terminal-askpass-{os.getuid()}"
+    try:
+        directory.mkdir(mode=0o700, exist_ok=True)
+        info = directory.lstat()
+        if directory.is_symlink() or info.st_uid != os.getuid() or info.st_mode & 0o077:
+            return False
+        for old in directory.iterdir():  # ssh processes that are gone
+            if not Path(f"/proc/{old.name.split('-')[0]}").exists():
+                old.unlink(missing_ok=True)
+        marker = directory / ssh_process_key()
+        marker.touch(exist_ok=False)
+        return True
+    except FileExistsError:
+        return False
+    except OSError:
+        return False
+
+
+def ask_on_terminal(prompt: str) -> int:
+    """Ask on the controlling terminal, hiding the answer for secrets."""
+    hidden = bool(HIDDEN_PROMPT.search(prompt))
+    try:
+        # Unbuffered descriptor: a terminal is not seekable, so a text-mode
+        # "r+" file object cannot be opened on it.
+        tty = os.open("/dev/tty", os.O_RDWR | os.O_NOCTTY)
+    except OSError:
+        return 1
+    try:
+        old = termios.tcgetattr(tty)
+        answer = b""
+        try:
+            if hidden:
+                # Echo goes off before the question appears, so even a fast
+                # typist or a paste never shows the secret.
+                new = termios.tcgetattr(tty)
+                new[3] &= ~termios.ECHO
+                termios.tcsetattr(tty, termios.TCSAFLUSH, new)
+            os.write(tty, prompt.encode())
+            while not answer.endswith(b"\n"):
+                chunk = os.read(tty, 1024)
+                if not chunk:
+                    break
+                answer += chunk
+        finally:
+            termios.tcsetattr(tty, termios.TCSADRAIN, old)
+            if hidden:
+                os.write(tty, b"\n")
+    except OSError:
+        return 1
+    finally:
+        os.close(tty)
+    if not answer.endswith(b"\n"):
+        return 1  # Ctrl+D or the terminal went away: cancel
+    sys.stdout.write(answer.decode(errors="replace").rstrip("\r\n") + "\n")
+    return 0
+
+
+def main() -> int:
+    prompt = sys.argv[1] if len(sys.argv) > 1 else "Senha: "
+    identifier = os.environ.get("HACKER_TERMINAL_SSH_ID", "")
+    if identifier and PASSWORD_PROMPT.search(prompt) and first_password_attempt():
+        from hackerterminal import passwords
+
+        password = passwords.lookup(identifier)
+        if password:
+            sys.stdout.write(password + "\n")
+            return 0
+    elif identifier and PASSWORD_PROMPT.search(prompt):
+        prompt = "A senha salva foi recusada. " + prompt
+    return ask_on_terminal(prompt)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

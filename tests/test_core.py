@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 import subprocess
 import array
 import json
@@ -1443,3 +1444,50 @@ class AccessibleThemeTests(unittest.TestCase):
         self.assertIn(b".pane-inactive { opacity: 1.0; }", theme.css())
         self.assertIn(b".pane-inactive { opacity: 0.62; }", ThemeManager().get("minimal-dark").css())
         self.assertFalse(any(other.high_contrast for other in ThemeManager().all() if other.identifier != theme.identifier))
+
+
+class SSHAccessTests(unittest.TestCase):
+    def test_copy_id_options_translate_what_ssh_copy_id_cannot_take(self) -> None:
+        from hackerterminal.connections import copy_id_options
+
+        self.assertEqual(
+            copy_id_options("-J bastiao -A -X -o 'User=x y' -oConnectTimeout=3 -i ~/outra"),
+            ["-o", "ProxyJump=bastiao", "-o", "User=x y", "-o", "ConnectTimeout=3"],
+        )
+        self.assertEqual(copy_id_options("-o 'aberto"), [])
+
+    def test_key_setup_command(self) -> None:
+        from hackerterminal.connections import Connection
+
+        helper = Path("/opt/ht/bin/ht-copy-key")
+        default = Connection("u", "Umbrel", "umbrel@10.0.0.3").key_setup_command(helper)
+        self.assertEqual(
+            shlex.split(default),
+            [str(helper), "Umbrel", str(Path("~/.ssh/id_ed25519").expanduser()), "umbrel@10.0.0.3"],
+        )
+        custom = Connection("p", "Produção; rm", "root@h", 2222, "~/chaves/prod key", "-J b").key_setup_command(helper)
+        self.assertEqual(
+            shlex.split(custom)[1:],
+            ["Produção; rm", str(Path("~/chaves/prod key").expanduser()), "-p", "2222", "-o", "ProxyJump=b", "root@h"],
+        )
+
+    def test_askpass_command_carries_only_the_identifier(self) -> None:
+        from hackerterminal.connections import Connection
+
+        connection = Connection("umbrel", "Umbrel", "umbrel@10.0.0.3")
+        self.assertEqual(connection.command_line(), "ssh umbrel@10.0.0.3")
+        line = connection.command_line(Path("/opt/ht/bin/ht-askpass"))
+        self.assertEqual(
+            shlex.split(line),
+            ["env", "SSH_ASKPASS=/opt/ht/bin/ht-askpass", "SSH_ASKPASS_REQUIRE=force",
+             "HACKER_TERMINAL_SSH_ID=umbrel", "ssh", "umbrel@10.0.0.3"],
+        )
+
+    def test_passwords_degrade_without_libsecret(self) -> None:
+        from hackerterminal import passwords
+
+        with patch.object(passwords, "Secret", None):
+            self.assertFalse(passwords.available())
+            self.assertIsNone(passwords.lookup("x"))
+            self.assertFalse(passwords.store("x", "X", "senha"))
+            self.assertFalse(passwords.forget("x"))
