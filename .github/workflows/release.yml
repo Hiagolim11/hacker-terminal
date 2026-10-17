@@ -15,6 +15,9 @@ on:
         description: "Só testar: não publicar a release"
         type: boolean
         default: true
+      ref:
+        description: "Código a usar (padrão: o da própria tag; ex.: main, para testar o fluxo)"
+        required: false
 
 permissions:
   contents: write
@@ -28,7 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ inputs.ref || inputs.tag || github.ref }}
 
       - name: Install system dependencies
         run: |
@@ -47,7 +50,7 @@ jobs:
             exit 1
           fi
           python3 packaging/build_site.py
-          if ! git diff --quiet -- docs/index.html; then
+          if [ -n "$(git status --porcelain -- docs/index.html)" ]; then  # changed or never committed
             echo "::error::docs/index.html está desatualizado: rode python3 packaging/build_site.py e faça o commit"
             exit 1
           fi
@@ -83,7 +86,8 @@ jobs:
           path: dist/hacker-terminal_${{ env.VERSION }}_all.deb
 
       - name: Publish the release
-        if: env.DRY_RUN != 'true'
+        # Never publish code other than the tag's own.
+        if: env.DRY_RUN != 'true' && (inputs.ref == '' || inputs.ref == null || inputs.ref == inputs.tag)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
