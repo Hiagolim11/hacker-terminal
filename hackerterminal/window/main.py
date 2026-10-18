@@ -27,6 +27,7 @@ from ..shortcuts import ShortcutMap, accelerator_label
 from ..terminal import TerminalPane
 from ..themes import ThemeManager
 from .commands import CommandsMixin
+from .monitor import MonitorMixin
 from .dropdown import DropdownMixin
 from .output import OutputMixin
 from .panel import ActionPanel
@@ -79,7 +80,7 @@ def header_button(icon_name: str, fallback: str, tooltip: str) -> Gtk.Button:
     return button
 
 
-class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, SshMixin, PanesMixin, Gtk.ApplicationWindow):
+class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, SshMixin, PanesMixin, MonitorMixin, Gtk.ApplicationWindow):
     def __init__(
         self,
         application: Gtk.Application,
@@ -154,6 +155,7 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         # and styled once, with the terminal already in place.
         self.open_first_tabs()
         self.show_all()
+        self.apply_monitor()
         self.status_source_id = GLib.timeout_add_seconds(3, self.refresh_status)
         self.command_source_id = 0
         self.update_command_watch()
@@ -347,6 +349,7 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         self.status_context.set_ellipsize(Pango.EllipsizeMode.START)
         self.status_context.get_style_context().add_class("status-context")
         statusbar.pack_start(self.status_context, True, True, 0)
+        statusbar.pack_end(self.build_monitor_status(), False, False, 0)
         self.status = Gtk.Label(label="", xalign=1)
         self.status.set_ellipsize(Pango.EllipsizeMode.START)
         self.status.get_style_context().add_class("status")
@@ -716,6 +719,7 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
             terminal.apply_preferences(self.active_theme)
         if self.action_panel is not None:
             self.apply_panel_visibility()
+        self.apply_monitor()
         self.update_status()
         application = self.get_application()
         if hasattr(application, "sync_preferences"):

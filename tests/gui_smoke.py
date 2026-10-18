@@ -869,6 +869,37 @@ def main() -> int:
             result.destroy()
             if (active_pane.terminal.get_text_format(Vte.Format.TEXT) or "") != screen_before:
                 raise AssertionError("a quick action typed into the terminal")
+
+            # Resource monitor: off by default; on, it fills the status bar and the panel section,
+            # and it only samples while the window can be seen.
+            from hackerterminal.window.monitor import MonitorService
+            service = MonitorService.shared()
+            if window.monitor_status.get_visible() or service.running:
+                raise AssertionError("the resource monitor runs although it is off")
+            window.preferences.monitor = True
+            window.preferences_changed()
+            deadline = time.monotonic() + 4
+            while not window.monitor_label.get_text() and time.monotonic() < deadline:
+                Gtk.main_iteration_do(False)
+            if not service.running or "RAM" not in window.monitor_label.get_text():
+                raise AssertionError(f"the status bar shows no resource summary: {window.monitor_label.get_text()!r}")
+            window.show_monitor_details()
+            deadline = time.monotonic() + 3
+            cpu_value = window.action_panel.monitor_section.rows["cpu"][1]
+            while cpu_value.get_text() in ("…", "") and time.monotonic() < deadline:
+                Gtk.main_iteration_do(False)
+            if not window.action_panel.monitor_section.get_mapped() or not cpu_value.get_text().endswith("%"):
+                raise AssertionError("the panel's Sistema section is missing or empty")
+            window.set_monitor_hidden(True)
+            if service.running:
+                raise AssertionError("the monitor kept sampling for a hidden window")
+            window.set_monitor_hidden(False)
+            if not service.running:
+                raise AssertionError("the monitor did not resume when the window came back")
+            window.preferences.monitor = False
+            window.preferences_changed()
+            if service.running or window.monitor_status.get_visible() or window.action_panel.monitor_section.get_visible():
+                raise AssertionError("turning the monitor off left it running or on screen")
             if not all(button.get_visible() for button in window.action_panel.action_buttons):
                 raise AssertionError("sidebar actions are not visible")
             # Opened from hidden (the default), the panel must show its actions on screen,

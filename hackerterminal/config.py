@@ -92,6 +92,8 @@ class Preferences:
     key_switch: str = "brown"
     key_volume: int = 70
     key_release: bool = True
+    monitor: bool = False
+    monitor_items: str = "cpu,freq,temp,ram,gpu"  # what the status bar shows
     shortcuts: dict[str, str] = field(default_factory=dict)
 
     def normalize(self) -> None:
@@ -112,6 +114,9 @@ class Preferences:
         self.dropdown_height = clamp(int(self.dropdown_height), 25, 90)
         self.background_image = str(self.background_image or "").strip()
         self.background_opacity = clamp(int(self.background_opacity), 5, 90)
+        known = ("cpu", "freq", "temp", "ram", "gpu")
+        chosen = {item.strip() for item in str(self.monitor_items or "").split(",")}
+        self.monitor_items = ",".join(item for item in known if item in chosen)
         self.background_fit = self.background_fit if self.background_fit in ("cover", "contain", "tile") else "cover"
         self.shortcuts = {
             str(key).strip(): str(value).strip()
@@ -177,6 +182,8 @@ class ConfigStore:
                 key_switch=section.get("key_switch", "brown"),
                 key_volume=self._integer(section, "key_volume", 70),
                 key_release=self._boolean(section, "key_release", True),
+                monitor=self._boolean(section, "monitor", False),
+                monitor_items=section.get("monitor_items", "cpu,freq,temp,ram,gpu"),
                 shortcuts=shortcuts,
             )
         except (OSError, configparser.Error, ValueError, UnicodeError) as error:
@@ -227,6 +234,8 @@ class ConfigStore:
             "key_switch": preferences.key_switch,
             "key_volume": str(preferences.key_volume),
             "key_release": str(preferences.key_release).lower(),
+            "monitor": str(preferences.monitor).lower(),
+            "monitor_items": preferences.monitor_items,
         }
         if parser.has_section("shortcuts"):
             parser.remove_section("shortcuts")

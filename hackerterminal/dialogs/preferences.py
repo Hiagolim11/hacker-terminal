@@ -138,6 +138,23 @@ class PreferencesDialog(Gtk.Dialog):
         self.shell_status = general.hint("", column=1, width=1)
         general.field("Restaurar sessão", self.restore_session)
         general.field("Painel lateral", self.panel)
+        general.heading("Monitor de recursos")
+        self.monitor = Gtk.Switch(active=preferences.monitor)
+        general.field(
+            "Mostrar uso do sistema", self.monitor,
+            "Resumo na barra de status e detalhes no painel lateral: CPU, clock, temperatura, memória e GPU. "
+            "Atualiza a cada 2 segundos e para com a janela minimizada.",
+        )
+        chosen = preferences.monitor_items.split(",")
+        items_box = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, column_spacing=4, row_spacing=0, max_children_per_line=5)
+        self.monitor_items: dict[str, Gtk.CheckButton] = {}
+        for key, label in (("cpu", "CPU"), ("freq", "Clock"), ("temp", "Temperatura"), ("ram", "RAM"), ("gpu", "GPU")):
+            check = Gtk.CheckButton(label=label, active=key in chosen)
+            self.monitor_items[key] = check
+            items_box.add(check)
+        general.field("Na barra de status", items_box)
+        self.monitor.connect("notify::active", lambda *_: items_box.set_sensitive(self.monitor.get_active()))
+        items_box.set_sensitive(preferences.monitor)
         general.heading("Segurança e alertas")
         general.field(
             "Confirmar colagem perigosa",
@@ -799,6 +816,8 @@ class PreferencesDialog(Gtk.Dialog):
         target.key_volume = int(self.key_volume.get_value())
         target.key_release = self.key_release.get_active()
         target.panel_visible = self.panel.get_active()
+        target.monitor = self.monitor.get_active()
+        target.monitor_items = ",".join(key for key, check in self.monitor_items.items() if check.get_active())
         target.restore_session = self.restore_session.get_active()
         target.shell = self.shell.get_text().strip()
         target.confirm_paste = self.confirm_paste.get_active()

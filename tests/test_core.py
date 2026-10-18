@@ -1704,3 +1704,111 @@ class BackgroundImageTests(unittest.TestCase):
             self.assertIsNone(load(str(broken)))
             self.assertIsNone(load(str(Path(directory) / "nao-existe.png")))
             self.assertIsNotNone(load(str(Path(__file__).parent / "fixtures" / "gradiente.png")))
+
+
+class SystemMonitorTests(unittest.TestCase):
+    """Readings from a fake /proc and /sys, as different machines lay them out."""
+
+    @staticmethod
+    def write(path: Path, text: str) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+    def machine(self, root: Path, gpu: str = "intel") -> tuple[Path, Path]:
+        proc, sys_dir = root / "proc", root / "sys"
+        self.write(proc / "stat", "cpu  100 0 100 800 0 0 0 0\ncpu0 50 0 50 400 0 0 0 0\ncpu1 50 0 50 400 0 0 0 0\nintr 1\n")
+        self.write(proc / "meminfo", "MemTotal: 8000000 kB\nMemFree: 1000000 kB\nMemAvailable: 6000000 kB\nSwapTotal: 1000 kB\nSwapFree: 1000 kB\n")
+        for core, khz in ((0, 2_000_000), (1, 3_000_000)):
+            self.write(sys_dir / f"devices/system/cpu/cpu{core}/cpufreq/scaling_cur_freq", str(khz))
+            self.write(sys_dir / f"devices/system/cpu/cpu{core}/cpufreq/cpuinfo_max_freq", "3500000")
+        hwmon = sys_dir / "class/hwmon"
+        self.write(hwmon / "hwmon0/name", "acpitz")
+        self.write(hwmon / "hwmon0/temp1_input", "30000")
+        self.write(hwmon / "hwmon1/name", "coretemp")
+        self.write(hwmon / "hwmon1/temp1_input", "55000")  # a core
+        self.write(hwmon / "hwmon1/temp2_input", "61000")
+        self.write(hwmon / "hwmon1/temp2_label", "Package id 0")
+        card = sys_dir / "class/drm/card0"
+        drivers = root / "drivers"
+        if gpu == "intel":
+            (drivers / "i915").mkdir(parents=True)
+            self.write(card / "gt_act_freq_mhz", "650")
+            self.write(card / "gt_max_freq_mhz", "1100")
+        else:
+            (drivers / "amdgpu").mkdir(parents=True)
+            self.write(card / "device/gpu_busy_percent", "42")
+            self.write(card / "device/mem_info_vram_used", str(2 * 1024 ** 3))
+            self.write(card / "device/mem_info_vram_total", str(8 * 1024 ** 3))
+            self.write(card / "device/pp_dpm_sclk", "0: 500Mhz\n1: 1800Mhz *\n2: 2400Mhz\n")
+            self.write(card / "device/hwmon/hwmon9/temp1_input", "88000")
+        (card / "device").mkdir(parents=True, exist_ok=True)
+        os.symlink(drivers / ("i915" if gpu == "intel" else "amdgpu"), card / "device/driver")
+        (sys_dir / "class/drm/card0-eDP-1").mkdir(parents=True)  # a connector, not a GPU
+        return proc, sys_dir
+
+    def test_intel_laptop(self) -> None:
+        from hackerterminal.sysmon import SystemReader, status_groups
+        with tempfile.TemporaryDirectory() as directory:
+            proc, sys_dir = self.machine(Path(directory))
+            reader = SystemReader(proc, sys_dir)
+            first = reader.sample()
+            self.assertIsNone(first.cpu_percent)  # load needs two readings
+            # cpu0 busy 50 of 100 more jiffies, cpu1 idle the whole time
+            self.write(proc / "stat", "cpu  150 0 100 850 0 0 0 0\ncpu0 100 0 50 450 0 0 0 0\ncpu1 50 0 50 450 0 0 0 0\n")
+            snapshot = reader.sample()
+            self.assertAlmostEqual(snapshot.cpu_percent, 50.0)
+            self.assertEqual([round(load) for load in snapshot.cores], [50, 0])
+            self.assertEqual((snapshot.cpu_mhz, snapshot.cpu_max_mhz), (2500.0, 3500.0))
+            self.assertEqual(snapshot.cpu_temp, 61.0)  # the package, not a core or the ACPI zone
+            self.assertEqual((snapshot.ram_used, snapshot.ram_total), (2_000_000 * 1024, 8_000_000 * 1024))
+            self.assertEqual(len(snapshot.gpus), 1)
+            gpu = snapshot.gpu
+            self.assertEqual((gpu.driver, gpu.mhz, gpu.max_mhz, gpu.busy, gpu.vram_total), ("i915", 650.0, 1100.0, None, None))
+            self.assertEqual(snapshot.alerts(), set())
+            self.assertEqual(status_groups(snapshot, ("cpu", "freq", "temp", "ram", "gpu")), [
+                ("CPU 50% · 2,5 GHz · 61 °C", False), ("RAM 1,9/7,6 GB", False), ("GPU 650 MHz", False)])
+            self.assertEqual(status_groups(snapshot, ("freq", "ram")), [("CPU 2,5 GHz", False), ("RAM 1,9/7,6 GB", False)])
+
+    def test_amd_gpu_hot_and_memory_full(self) -> None:
+        from hackerterminal.sysmon import SystemReader, status_groups
+        with tempfile.TemporaryDirectory() as directory:
+            proc, sys_dir = self.machine(Path(directory), gpu="amd")
+            self.write(proc / "meminfo", "MemTotal: 8000000 kB\nMemAvailable: 400000 kB\n")
+            snapshot = SystemReader(proc, sys_dir).sample()
+            gpu = snapshot.gpu
+            self.assertEqual((gpu.busy, gpu.mhz, gpu.max_mhz, gpu.temp), (42.0, 1800.0, 2400.0, 88.0))
+            self.assertEqual((gpu.vram_used, gpu.vram_total), (2 * 1024 ** 3, 8 * 1024 ** 3))
+            self.assertEqual(snapshot.alerts(), {"temp", "ram"})
+            groups = dict(status_groups(snapshot, ("ram", "gpu", "temp")))
+            self.assertTrue(groups["RAM 7,2/7,6 GB"])  # 7 600 000 kB used = 7,25 GiB
+            self.assertTrue(groups["GPU 42% · 1,8 GHz · 88 °C"])
+
+    def test_missing_files_leave_readings_empty(self) -> None:
+        from hackerterminal.sysmon import SystemReader, status_groups
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write(root / "proc/cpuinfo", "processor: 0\ncpu MHz\t\t: 1996.250\n")
+            snapshot = SystemReader(root / "proc", root / "sys").sample()
+            self.assertEqual(snapshot.cpu_mhz, 1996.25)  # no cpufreq: from /proc/cpuinfo
+            self.assertIsNone(snapshot.cpu_temp)
+            self.assertIsNone(snapshot.ram_total)
+            self.assertEqual(snapshot.gpus, [])
+            self.assertEqual(status_groups(snapshot, ("cpu", "temp", "ram", "gpu")), [])
+
+    def test_nvidia_smi_output(self) -> None:
+        from hackerterminal.sysmon import parse_nvidia_smi
+        gpus = parse_nvidia_smi("NVIDIA GeForce RTX 3060, 17, 1410, 2100, 1024, 12288, 47\nTesla, [N/A], 300, 1000, 0, 0, [N/A]\nlixo\n")
+        self.assertEqual(len(gpus), 2)
+        self.assertEqual((gpus[0].name, gpus[0].busy, gpus[0].mhz, gpus[0].temp), ("NVIDIA GeForce RTX 3060", 17.0, 1410.0, 47.0))
+        self.assertEqual((gpus[0].vram_used, gpus[0].vram_total), (1024 * 1024 ** 2, 12288 * 1024 ** 2))
+        self.assertIsNone(gpus[1].busy)
+        self.assertIsNone(gpus[1].temp)
+
+    def test_settings_round_trip_and_cleanup(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = ConfigStore(Path(directory) / "config.ini")
+            self.assertFalse(store.load().monitor)  # off unless asked for
+            self.assertTrue(store.save(Preferences(monitor=True, monitor_items="ram, gpu,bogus,cpu")))
+            loaded = store.load()
+            self.assertTrue(loaded.monitor)
+            self.assertEqual(loaded.monitor_items, "cpu,ram,gpu")  # known items, in display order

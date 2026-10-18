@@ -2,6 +2,18 @@
 
 Este projeto segue [Semantic Versioning](https://semver.org/).
 
+## 0.22.0
+
+- **Monitor de recursos**, opcional (*Preferências → Geral → Monitor de recursos*):
+  - a **barra de status** ganha um resumo (`CPU 12% · 2,4 GHz · 50 °C   RAM 3,1/7,7 GB   GPU 300 MHz`), com os itens que você escolher; fica vermelho só acima de 85 °C ou de 90% de memória, e um clique abre os detalhes;
+  - o **painel lateral** ganha a seção *Sistema*: uso, clock e temperatura da CPU com uma barra por núcleo, memória e swap, e GPU, cada um com um gráfico do último minuto nas cores do tema.
+- Lê `/proc` e `/sys` a cada 2 s (~2 ms por leitura), sem `sudo`. Para quando a janela está minimizada ou escondida, e as janelas compartilham a leitura.
+- A GPU é lida conforme o fabricante:
+  - **Intel**: o clock;
+  - **AMD**: uso, clock, memória de vídeo e temperatura;
+  - **NVIDIA**: os mesmos dados da AMD, pelo `nvidia-smi`, em segundo plano.
+  - O que não existe na máquina simplesmente não aparece.
+
 ## 0.21.0
 
 - **Prévia ao vivo dos temas na paleta** (`Ctrl+Shift+P`): ao selecionar *Aplicar tema: …* com as setas ou digitando, a janela já mostra o tema; fechar sem escolher volta ao tema de antes, e nada é salvo até você escolher. Passar rápido pela lista não recolore a cada linha.

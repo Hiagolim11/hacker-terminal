@@ -229,6 +229,14 @@ scrollbar slider:active {{ background-color: {self.accent}; }}
 .panel-inner {{ padding: 16px 10px 12px 10px; }}
 .panel-title {{ color: {self.muted}; font-weight: 600; font-size: 12px; }}
 .panel-hint {{ color: {self.muted}; font-size: 11px; }}
+.monitor-section {{ padding-bottom: 10px; margin-bottom: 12px; border-bottom: 1px solid {hairline}; }}
+.monitor-row {{ padding: 4px 4px 8px 4px; }}
+.monitor-name {{ color: {self.foreground}; font-weight: 600; font-size: 12px; }}
+.monitor-value {{ color: {self.foreground}; font-size: 12px; font-feature-settings: "tnum"; }}
+.monitor-detail {{ color: {self.muted}; font-size: 11px; font-feature-settings: "tnum"; }}
+.monitor-detail.monitor-alert {{ color: {self.danger}; }}
+.monitor-graph {{ color: {self.accent}; }}
+.monitor-status {{ font-feature-settings: "tnum"; margin-left: 10px; }}
 .result-output, .result-output text {{ background-color: {self.terminal_background}; color: {self.terminal_foreground}; }}
 .result-bar {{ background-color: {self.terminal_background}; border-top: 1px solid {hairline}; padding: 8px 12px; }}
 .result-status {{ color: {self.muted}; font-size: 12px; }}

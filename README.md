@@ -110,6 +110,7 @@ Por cima desse motor maduro, ele adiciona uma camada pensada para quem passa o d
 - **Atalhos 100% remapeáveis**, com detecção de conflitos
 - **Perfis** que guardam tema, fonte, shell, cursor, diretório e ações
 - **Ações rápidas** editáveis no painel lateral
+- **Monitor de recursos** opcional: CPU, clock, temperatura, memória e GPU na barra de status, com gráficos do último minuto no painel
 - **Visualizador de imagens e planilhas** em abas (`ht-open`)
 - Barra de status com diretório, branch Git e virtualenv
 
@@ -243,7 +244,7 @@ hacker-terminal --diagnose
 ```
 
 ```text
-Hacker Terminal 0.21.0
+Hacker Terminal 0.22.0
 GTK: 3.24.52
 VTE: 0.84.1
 Fonte selecionada: JetBrainsMono Nerd Font
@@ -550,6 +551,21 @@ fullscreen =
 
 Identificadores disponíveis: `new_tab`, `close_pane`, `split_horizontal`, `split_vertical`, `focus_other_pane`, `next_tab`, `previous_tab`, `copy`, `paste`, `search`, `command_palette`, `toggle_panel`, `preferences`, `zoom_in`, `zoom_out`, `zoom_reset`, `fullscreen`.
 
+### Monitor de recursos
+
+Ligue em **Preferências → Geral → Monitor de recursos**. Fica desligado por padrão.
+
+- **Barra de status**: um resumo como `CPU 12% · 2,4 GHz · 50 °C   RAM 3,1/7,7 GB   GPU 300 MHz`. Você escolhe os itens (CPU, clock, temperatura, RAM, GPU). Ele fica vermelho só quando a temperatura passa de 85 °C ou a memória de 90%. Clique nele para abrir os detalhes.
+- **Painel lateral** (`Ctrl+Shift+B`): a seção *Sistema* mostra uso, clock e temperatura da CPU com uma barra por núcleo; memória e swap; e a GPU. Cada um tem um gráfico do último minuto.
+
+Os dados vêm de `/proc` e `/sys` a cada 2 segundos (cerca de 2 ms por leitura), sem `sudo` e sem instalar nada. A leitura para quando a janela é minimizada ou escondida, e várias janelas compartilham a mesma leitura.
+
+| GPU | O que aparece |
+| --- | --- |
+| Intel (integrada) | Clock atual e máximo. O uso em % exige permissão de administrador, e a memória de vídeo é a própria RAM, então não aparecem |
+| AMD (`amdgpu`) | Uso, clock, memória de vídeo e temperatura |
+| NVIDIA (driver proprietário) | Uso, clock, memória de vídeo e temperatura, pelo `nvidia-smi` |
+
 ### Ações rápidas
 
 O painel lateral (`Ctrl+Shift+B` ou o botão ☰ no cabeçalho) traz comandos de diagnóstico local (identidade, interfaces de rede, portas, rotas, processos, SSH, saúde do sistema). Em **Editar ações…** você adiciona, edita, remove e reordena — por exemplo `make test`, `docker ps` ou `git status` — e pode exigir **confirmação** antes de ações sensíveis (marcadas com ●). Todas as ações também aparecem na paleta de comandos.
@@ -717,6 +733,8 @@ Os caminhos respeitam `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME` e `XD
 | `confirm_paste` | booleano | `true` | Confirma colagens perigosas |
 | `bell_notify` | booleano | `true` | Marca aba/janela no bell |
 | `panel_visible` | booleano | `false` | Painel de ações |
+| `monitor` | booleano | `false` | Monitor de recursos na barra de status e no painel |
+| `monitor_items` | lista | `cpu,freq,temp,ram,gpu` | O que o resumo da barra de status mostra |
 | `restore_session` | booleano | `true` | Restaura abas ao abrir |
 | `notify_commands` | booleano | `true` | Avisa quando um comando longo termina |
 | `notify_after` | 3–3600 | `10` | Segundos para um comando ser considerado longo |
@@ -794,6 +812,7 @@ A interface fica em dois pacotes. A janela (`window/`) é uma classe principal c
 | `window/panes.py`, `commands.py`, `output.py` | Divisões e transmissão; avisos, saltos e histórico de comandos; salvar/gravar saída e renomear painéis |
 | `window/ssh.py`, `dropdown.py`, `viewer.py` | Abas SSH e acesso por chave; terminal suspenso; abas do visualizador |
 | `window/panel.py` | Painel lateral de ações rápidas |
+| `sysmon.py`, `window/monitor.py` | Leitura de CPU, memória e GPU em `/proc` e `/sys`; resumo na barra de status, seção *Sistema* do painel e gráficos |
 | `dialogs/` | Preferências, editores (atalhos, temas, perfis), ações e `{campos}`, SSH, histórico, paleta e utilitários comuns |
 | `terminal.py` | Painel VTE: spawn do shell, integração (marcas de prompt), pesquisa, links, colagem segura, bell, zoom |
 | `themes.py` | Carrega e valida temas, gera o CSS do GTK, contraste WCAG, salva temas personalizados |

@@ -9,6 +9,7 @@ from ..config import Preferences
 from ..dialogs.actions import FieldsDialog
 from ..runtime import Gtk, Pango
 from ..terminal import TerminalPane
+from .monitor import MonitorSection
 
 
 PANEL_WIDTH = 220
@@ -43,6 +44,9 @@ class ActionPanel(Gtk.Box):
         self.scroller.set_overlay_scrolling(True)
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         content.get_style_context().add_class("panel-inner")
+        self.monitor_section = MonitorSection()
+        self.monitor_section.set_no_show_all(True)  # shown when the monitor is on
+        content.pack_start(self.monitor_section, False, False, 0)
         title = Gtk.Label(label="Ações rápidas", xalign=0)
         title.get_style_context().add_class("panel-title")
         title.set_margin_start(4)
@@ -138,6 +142,13 @@ class ActionPanel(Gtk.Box):
             self.run_command,
             terminal.terminal.get_font(),
         )
+
+    def set_monitor_visible(self, visible: bool) -> None:
+        self.monitor_section.set_no_show_all(not visible)
+        if visible:
+            self.monitor_section.show_all()
+        else:
+            self.monitor_section.hide()
 
     def set_compact(self, compact: bool) -> None:
         if compact == self.compact:
