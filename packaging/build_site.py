@@ -8,6 +8,7 @@ release it advertises. Run it before each release.
 
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import re
@@ -156,9 +157,16 @@ def main() -> int:
     page = page.replace("__VERSION__", VERSION)
     page = page.replace("__DEMO_DATA__", demo_data(themes))
     assert "__" not in page.split("<script>")[0].replace("___", ""), "unfilled placeholder"
-    (DOCS / "index.html").write_text(page, encoding="utf-8")
+    # Cache-busting: reference demo.css/demo.js with a short content hash, so a
+    # changed file gets a new URL and browsers never serve a stale demo.
     for name in ("demo.css", "demo.js"):
-        shutil.copyfile(SITE / name, DOCS / name)
+        data = (SITE / name).read_bytes()
+        (DOCS / name).write_bytes(data)
+        digest = hashlib.sha1(data).hexdigest()[:8]
+        marker = f'"{name}"'
+        assert page.count(marker) == 1, f"esperava uma referência a {name}"
+        page = page.replace(marker, f'"{name}?v={digest}"')
+    (DOCS / "index.html").write_text(page, encoding="utf-8")
     (DOCS / ".nojekyll").touch()  # serve the files as they are
     print(f"docs/index.html: versão {VERSION}, {len(names)} temas, demonstração interativa")
     return 0
