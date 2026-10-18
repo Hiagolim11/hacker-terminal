@@ -225,17 +225,18 @@
     "Alvo único: 10.10.13.37 (lab.ctf). Escopo em ~/scope.txt.",
     "Tudo é simulado no seu navegador — nenhum pacote sai daqui.",
     "",
-    "Missão: capturar 5 flags no formato HT{...} e registrar com:",
-    "    flag HT{...}            e ver o placar com:   flag",
+    "Há 5 flags escondidas (formato HT{...}). Ninguém vai te entregar",
+    "o caminho — esta é a graça. Por onde procurar:",
     "",
-    "Flag 1, de brinde, por ter lido o briefing:",
+    "  • a sua própria casa guarda mais do que aparenta",
+    "  • logs e arquivos largados sempre falam demais",
+    "  • nem tudo que parece embaralhado está protegido",
+    "  • o alvo expõe serviços: enumere a fundo, não presuma",
+    "",
+    "Registrar:  flag HT{...}   ·   progresso:  flag   ·   ferramentas:  help",
+    "",
+    "Cortesia da casa, só por ler o briefing:",
     "    " + FLAG_WELCOME,
-    "",
-    "Pistas das outras quatro:",
-    "  2) Logs contam tudo ......... grep -i flag recon/auth.log",
-    "  3) O que começa com ponto ... ls -a",
-    "  4) Codificado não é cifrado . base64 -d loot/pista.b64",
-    "  5) Enumere TODAS as portas .. nmap -p- 10.10.13.37",
     "=============================================================",
     "",
   ].join("\n");
@@ -249,18 +250,18 @@
     "Oct 18 03:07:18 lab sudo:   hacker : TTY=pts/0 ; PWD=/home/hacker ; USER=root ; COMMAND=/usr/bin/tcpdump",
     "Oct 18 03:09:02 lab sshd[1402]: Failed password for invalid user oracle from 185.3.4.5 port 33110 ssh2",
     "Oct 18 03:11:44 lab CRON[1450]: pam_unix(cron:session): session opened for user root(uid=0)",
-    "Oct 18 03:14:22 lab sshd[1511]: DEBUG esquecido pelo dev: flag de persistencia = HT{logs_sempre_contam_tudo}",
+    "Oct 18 03:14:22 lab agent[1511]: session token issued for svc-backup: HT{logs_sempre_contam_tudo}",
     "Oct 18 03:15:01 lab sshd[1402]: Failed password for invalid user test from 185.3.4.5 port 33110 ssh2",
     "Oct 18 03:18:37 lab sshd[1560]: Connection closed by 185.3.4.5 port 33110 [preauth]",
     "Oct 18 03:21:10 lab systemd-logind[900]: New session 7 of user hacker.",
     "Oct 18 03:25:59 lab sshd[1601]: Received disconnect from 10.10.13.5 port 40122:11: disconnected by user",
   ].join("\n") + "\n";
   const FLAGS = [
-    { value: FLAG_WELCOME,                    name: "Acesso inicial", pts: 10, hint: "leia o briefing:  mission" },
-    { value: "HT{logs_sempre_contam_tudo}",   name: "Nos logs",       pts: 20, hint: "grep -i flag recon/auth.log" },
-    { value: "HT{nada_fica_escondido}",       name: "Arquivo oculto", pts: 20, hint: "ls -a  no seu /home" },
-    { value: "HT{base64_nao_e_criptografia}", name: "Decodificacao",  pts: 25, hint: "base64 -d loot/pista.b64" },
-    { value: "HT{porta_fora_do_padrao}",      name: "Porta incomum",  pts: 25, hint: "nmap -p- 10.10.13.37, depois curl na porta" },
+    { value: FLAG_WELCOME,                    name: "Acesso inicial", pts: 10 },
+    { value: "HT{logs_sempre_contam_tudo}",   name: "Nos logs",       pts: 20 },
+    { value: "HT{nada_fica_escondido}",       name: "Arquivo oculto", pts: 20 },
+    { value: "HT{base64_nao_e_criptografia}", name: "Decodificacao",  pts: 25 },
+    { value: "HT{porta_fora_do_padrao}",      name: "Porta incomum",  pts: 25 },
   ];
 
   const fs = dir({
@@ -270,14 +271,14 @@
         "scope.txt": file("# Escopo AUTORIZADO desta operacao (ficticio, simulado no navegador)\n10.10.13.37    lab.ctf\n# Fora deste escopo: nao tocar.\n"),
         recon: dir({
           "auth.log": file(AUTH_LOG),
-          "enum.md": file("# Enumeracao\n\n- [x] varredura rapida:   nmap lab.ctf\n- [ ] TODAS as portas:    nmap -p- 10.10.13.37   <- servicos incomuns moram aqui\n- [ ] versoes/banners:    nmap -sV -p- 10.10.13.37\n- [ ] falar com o servico: curl http://10.10.13.37:PORTA\n"),
+          "enum.md": file("# Recon (rascunho, incompleto)\n- varredura padrao: quase nada aberto. nao confiar nisso.\n- auth.log: muito ruido de brute force; algo util no meio?\n- loot/: baixado do alvo, ainda por analisar.\n- TODO: terminar a enumeracao web do servico.\n"),
         }),
         loot: dir({
           "pista.b64": file("SFR7YmFzZTY0X25hb19lX2NyaXB0b2dyYWZpYX0=\n"),
           "captura.png": image("screenshots/hero.png"),
           "credenciais.txt": file("# coletado do alvo, ainda sem uso\nadmin:$2y$10$Ro0t...(hash nao quebrado)\n"),
         }),
-        ".segredo": file("Muito bem: ls -a revela os arquivos ocultos (os que comecam com ponto).\n\n  HT{nada_fica_escondido}\n\nRegistre com:  flag HT{nada_fica_escondido}\n"),
+        ".segredo": file("# anotacao pessoal — NAO COMMITAR\nHT{nada_fica_escondido}\n"),
         ".ssh": dir({ config: file("Host lab.ctf\n  HostName 10.10.13.37\n  User hacker\n"), "id_ed25519.pub": file("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI… hacker@lab\n"), known_hosts: file("") }),
         ".config": dir({
           "hacker-terminal": dir({
@@ -894,7 +895,7 @@
     let services;
     if (ctf) {
       services = [["22/tcp", "ssh", "OpenSSH 9.9p1 Debian 3 (protocol 2.0)"], ["80/tcp", "http", "nginx 1.26.3"]];
-      if (allPorts) services.push(["8080/tcp", "http", "Werkzeug 3.0.1 (Python 3.13.3) — flag-server"]);
+      if (allPorts) services.push(["8080/tcp", "http-alt", "Werkzeug/3.0.1 Python/3.13.3"]);
     } else {
       services = [["22/tcp", "ssh", "OpenSSH 9.9p1 Debian 3 (protocol 2.0)"], ["80/tcp", "http", "nginx 1.26.3"],
         ["443/tcp", "ssl/http", "nginx 1.26.3"], ["8000/tcp", "http", "SimpleHTTPServer 0.6 (Python 3.13.3)"]].slice(0, 2 + (hash(target) % 3));
@@ -906,8 +907,6 @@
       ctx.out.write("open  ", "c2");
       out(ctx, `${pad(name, 10)}${ver}`);
     }
-    if (ctf && !allPorts) out(ctx, "(dica: a varredura padrao so ve portas comuns — rode  nmap -p- 10.10.13.37  para achar servicos incomuns)", "c8");
-    if (ctf && allPorts) out(ctx, "(porta 8080 aberta — fale com o servico:  curl http://10.10.13.37:8080 )", "c8");
     out(ctx, "Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .");
     out(ctx, `Nmap done: 1 IP address (1 host up) scanned in ${allPorts ? "18.93" : "7.42"} seconds`);
     out(ctx, "(simulacao: nenhum pacote saiu do seu navegador)", "c8");
@@ -942,49 +941,68 @@
   });
   def("curl wget", async (ctx) => {
     const raw = ctx.args.filter((a) => !a.startsWith("-")).pop() || "";
-    if (!raw) return fail(ctx, "uso: curl http://10.10.13.37:8080", 2);
+    if (!raw) return fail(ctx, "uso: curl http://HOST[:PORTA][/caminho]", 2);
     const parts = raw.match(/^(?:https?:\/\/)?([^/:]+)(?::(\d+))?(\/\S*)?$/);
     if (!parts) return fail(ctx, `curl: (3) URL com host/porta invalido: ${raw}`, 3);
     const port = parts[2] ? Number(parts[2]) : 80;
+    const path = (parts[3] || "/").replace(/\/+$/, "") || "/";
     if (addressOf(parts[1]) !== CTF_IP) return fail(ctx, `curl: (6) Could not resolve host: ${parts[1]}`, 6);
     for (let t = 0; t < 4; t += 1) { if (ctx.aborted()) return 130; await sleep(130); }
     if (port === 8080) {
+      if (path === "/robots.txt") { out(ctx, "User-agent: *"); out(ctx, "Disallow: /internal"); return 0; }
+      if (path === "/internal") {
+        out(ctx, "<!doctype html>");
+        out(ctx, "<title>console :: svc-backup</title>");
+        out(ctx, "<h1>console interno (svc-backup)</h1>");
+        out(ctx, "<p>area restrita. nao era para estar exposta.</p>");
+        out(ctx, "<!-- build-marker HT{porta_fora_do_padrao} -->", "c8");
+        return 0;
+      }
+      if (path === "/") {
+        out(ctx, "<!doctype html>");
+        out(ctx, "<title>svc-backup</title>");
+        out(ctx, "<h1>503 — em manutencao</h1>");
+        out(ctx, "<!-- staging: confira as regras de indexacao antes de publicar -->", "c8");
+        return 0;
+      }
       out(ctx, "<!doctype html>");
-      out(ctx, "<title>flag-server</title>");
-      out(ctx, "<h1>flag-server :8080</h1>");
-      out(ctx, "<p>Painel interno que vazou para fora. Olhe o codigo-fonte da pagina:</p>");
-      out(ctx, "<!-- HT{porta_fora_do_padrao} -->", "c8");
-      out(ctx, "<p>Registre: flag HT{porta_fora_do_padrao}</p>");
+      out(ctx, "<title>404 Not Found</title>");
+      out(ctx, "<h1>404 Not Found</h1>");
       return 0;
     }
     if (port === 80 || port === 443) {
       out(ctx, "<!doctype html>");
       out(ctx, "<title>lab.ctf</title>");
       out(ctx, "<h1>It works! nginx</h1>");
-      out(ctx, "<p>Pagina padrao. Nada de util na porta 80.</p>");
-      out(ctx, "<!-- dev: o painel interno subiu de novo numa porta alta... -->", "c8");
+      out(ctx, "<p>Pagina padrao do servidor.</p>");
       return 0;
     }
     return fail(ctx, `curl: (7) Failed to connect to ${parts[1]} port ${port}: Connection refused`, 7);
   });
+  function captureFlag(token) {
+    const isNew = !app.ctfFound.has(token);
+    app.ctfFound.add(token);
+    if (isNew && typeof document !== "undefined") document.dispatchEvent(new CustomEvent("ht-ctf-change"));
+    return isNew;
+  }
   function flagScoreboard(ctx) {
     out(ctx, "CTF · Laboratorio Fantasma", "b");
     let score = 0;
     let total = 0;
     let got = 0;
-    for (const challenge of FLAGS) {
+    FLAGS.forEach((challenge, index) => {
       total += challenge.pts;
       const has = app.ctfFound.has(challenge.value);
       if (has) { score += challenge.pts; got += 1; }
       ctx.out.write("  " + (has ? "[x] " : "[ ] "), has ? "c2" : "c1");
-      ctx.out.write(pad(challenge.name, 16), has ? "c2" : "");
+      ctx.out.write(pad(has ? challenge.name : `flag #${index + 1}`, 16), has ? "c2" : "dim");
       ctx.out.write(padStart(`${challenge.pts} pts`, 8) + "  ");
-      out(ctx, has ? "capturada" : challenge.hint, "dim");
-    }
+      out(ctx, has ? "capturada" : "???", "dim");
+    });
     out(ctx);
     out(ctx, `Placar: ${got}/${FLAGS.length} flags · ${score}/${total} pontos`, got === FLAGS.length ? "c2 b" : "b");
     if (got === FLAGS.length) out(ctx, "Laboratorio concluido! Agora e so instalar o Hacker Terminal de verdade.", "c3 b");
-    else out(ctx, "Registre uma flag com:  flag HT{...}", "dim");
+    else out(ctx, "Registre no terminal (flag HT{...}) ou no campo de flags da pagina.", "dim");
     return 0;
   }
   def("flag flags ctf", (ctx) => {
@@ -992,8 +1010,7 @@
     if (!token) return flagScoreboard(ctx);
     const match = FLAGS.find((challenge) => challenge.value === token);
     if (!match) return fail(ctx, `flag invalida: ${token}  (confira letra por letra; o formato e HT{...})`);
-    if (app.ctfFound.has(token)) { out(ctx, `ja registrada: ${match.name}`, "c3"); return 0; }
-    app.ctfFound.add(token);
+    if (!captureFlag(token)) { out(ctx, `ja registrada: ${match.name}`, "c3"); return 0; }
     out(ctx, `flag aceita: ${match.name}  (+${match.pts} pts)`, "c2 b");
     if (app.ctfFound.size === FLAGS.length) out(ctx, "Todas as 5! Digite  flag  para o placar final.", "c3 b");
     else out(ctx, `faltam ${FLAGS.length - app.ctfFound.size}. Veja o placar com:  flag`, "dim");
@@ -2517,5 +2534,50 @@
     },
   };
 
+  window.htCTF = {
+    total: FLAGS.length,
+    found: () => app.ctfFound.size,
+    state: () => FLAGS.map((f) => ({ name: f.name, pts: f.pts, done: app.ctfFound.has(f.value) })),
+    submit(raw) {
+      const token = String(raw == null ? "" : raw).trim();
+      if (!token) return { ok: false, reason: "vazia" };
+      const match = FLAGS.find((f) => f.value === token);
+      if (!match) return { ok: false, reason: "invalida" };
+      const isNew = captureFlag(token);
+      return { ok: true, name: match.name, pts: match.pts, isNew, found: app.ctfFound.size, total: FLAGS.length, done: app.ctfFound.size === FLAGS.length };
+    },
+  };
+  (function bindFlagField() {
+    const form = document.getElementById("ctf-submit");
+    if (!form) return;
+    const input = document.getElementById("ctf-flag");
+    const dots = document.getElementById("ctf-dots");
+    const count = document.getElementById("ctf-count");
+    const msg = document.getElementById("ctf-msg");
+    const refresh = () => {
+      const state = window.htCTF.state();
+      const got = state.filter((f) => f.done).length;
+      dots.textContent = state.map((f) => (f.done ? "●" : "○")).join(" ");
+      count.textContent = `${got} / ${FLAGS.length} flags · ${state.reduce((s, f) => s + (f.done ? f.pts : 0), 0)} pts`;
+      form.classList.toggle("ctf-done", got === FLAGS.length);
+    };
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const res = window.htCTF.submit(input.value);
+      msg.classList.remove("ok", "err");
+      if (!res.ok) {
+        msg.textContent = res.reason === "vazia" ? "Cole uma flag no formato HT{...}." : "Flag invalida. Confira letra por letra.";
+        msg.classList.add("err");
+        return;
+      }
+      input.value = "";
+      if (res.done) { msg.textContent = "Todas as 5 capturadas — missao cumprida."; msg.classList.add("ok"); }
+      else if (res.isNew) { msg.textContent = `Capturada: ${res.name} (+${res.pts} pts). Faltam ${res.total - res.found}.`; msg.classList.add("ok"); }
+      else { msg.textContent = `Voce ja tinha "${res.name}".`; }
+      refresh();
+    });
+    document.addEventListener("ht-ctf-change", refresh);
+    refresh();
+  })();
   app.start();
 })();
