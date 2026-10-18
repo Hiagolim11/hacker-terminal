@@ -255,23 +255,24 @@ footer { padding-block: clamp(72px, 11vw, 128px) 40px; }
     <div class="container">
       <div class="section-head reveal">
         <h2 id="experimente-title">Experimente sem instalar.</h2>
-        <p class="muted">Um shell de demonstração com os mesmos temas, perfis, efeitos, ações rápidas e sons de teclado do app. Clique nele e digite <code>help</code>, troque o tema na paleta de comandos (<kbd>Ctrl+Shift+P</kbd> ou o botão de busca) ou mude tudo nas preferências, pela engrenagem.</p>
+        <p class="muted">Um shell de demonstração — com os temas, perfis, sons de teclado e preferências do app de verdade — montado como um <strong>CTF</strong>: um laboratório de pentest autorizado e fictício. Capture 5 flags com <code>grep</code>, <code>base64</code> e enumeração de portas (<code>nmap</code>, <code>curl</code>). Digite <code>mission</code> para o briefing e <code>help</code> para os comandos. Nada roda no seu computador.</p>
       </div>
       <div class="ht-demo reveal" id="demo" data-version="__VERSION__">
         <noscript><img src="screenshots/hero.png" width="1280" height="760" alt="Janela do Hacker Terminal no tema Zero Day"></noscript>
       </div>
       <div class="demo-try reveal" id="demo-try" aria-label="Comandos para experimentar">
-        <span class="muted">Experimente:</span>
-        <button type="button" data-run="neofetch">neofetch</button>
+        <span class="muted">Comece por aqui:</span>
+        <button type="button" data-run="mission">mission</button>
+        <button type="button" data-run="ls -a">ls -a</button>
+        <button type="button" data-run="grep -i flag recon/auth.log">grep nos logs</button>
+        <button type="button" data-run="base64 -d loot/pista.b64">base64 -d</button>
+        <button type="button" data-run="nmap -p- 10.10.13.37">nmap -p-</button>
+        <button type="button" data-run="curl http://10.10.13.37:8080">curl :8080</button>
+        <button type="button" data-run="flag">placar</button>
         <button type="button" data-run="tema phosphor-amber">tema phosphor-amber</button>
-        <button type="button" data-run="perfil retro">perfil retro</button>
-        <button type="button" data-run="cores">cores</button>
-        <button type="button" data-run="git log --oneline">git log</button>
-        <button type="button" data-run="ls nao-existe">um comando que falha</button>
-        <button type="button" data-run="ht-open --inline docs/screenshots/grid.png">ht-open --inline</button>
-        <button type="button" data-run="cat ~/.config/hacker-terminal/config.ini">config.ini</button>
+        <button type="button" data-run="ht-open --inline loot/captura.png">ht-open --inline</button>
       </div>
-      <p class="demo-note muted">É uma simulação no navegador: nada roda no seu computador. O app de verdade abre o seu próprio shell, com <code>vim</code>, <code>tmux</code> e tudo o mais.</p>
+      <p class="demo-note muted">Tudo é simulado no navegador e os alvos são fictícios — nenhum pacote sai da sua máquina. O app de verdade abre o seu próprio shell, com <code>vim</code>, <code>tmux</code> e tudo o mais.</p>
     </div>
   </section>
 

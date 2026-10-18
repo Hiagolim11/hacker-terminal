@@ -183,18 +183,6 @@
   const file = (content, extra = {}) => ({ type: "file", content, ...extra });
   const exe = (content) => file(content, { exec: true });
   const image = (url) => file("", { image: url });
-  const source = (name) => file(`# ${name}\n# O código completo está em https://github.com/Hiagolim11/hacker-terminal\n`);
-
-  function themeIni(theme) {
-    const lines = ["[theme]", `id = ${theme.id}`, `name = ${theme.name}`, `author = ${theme.author}`];
-    if (theme.font) lines.push(`font = ${theme.font}`);
-    lines.push("", "[interface]", ...Object.entries(theme.ui).map(([k, v]) => `${k} = ${v}`));
-    lines.push("", "[terminal]", ...Object.entries(theme.term).map(([k, v]) => `${k} = ${v}`), `ansi = ${theme.ansi.join(", ")}`);
-    lines.push("", "[effects]", `matrix_color = ${theme.fx.matrix}`, `scanline_opacity = ${theme.fx.scanlines}`);
-    for (const key of ["glow", "vignette", "noise", "flicker", "curvature"]) if (theme.fx[key]) lines.push(`${key} = ${theme.fx[key]}`);
-    lines.push(`rain = ${theme.fx.rain}`);
-    return lines.join("\n") + "\n";
-  }
   function configIni() {
     return [
       "[terminal]",
@@ -229,47 +217,68 @@
     ].join("\n")).join("\n");
   }
 
-  const SCREENSHOTS = ["background-image", "grid", "hero", "history", "modern-themes", "palette", "phosphor", "phosphor-amber",
-    "prefs-general", "prefs-shortcuts", "prefs-sound", "split", "ssh", "theme-editor", "themes", "viewer-sheet"];
-  const PY_FILES = ["__init__", "actions", "app", "background", "cli", "config", "connections", "constants", "documents", "dropdown",
-    "effects", "fonts", "history", "inline_image", "keysound", "launcher", "logs", "openserver", "passwords", "profiles", "project",
-    "runtime", "sandbox", "session", "shortcuts", "terminal", "themes", "viewer"];
+  const FLAG_WELCOME = "HT{primeiro_acesso_concedido}";
+  const MISSION = [
+    "=============================================================",
+    "  OPERAÇÃO: LABORATÓRIO FANTASMA   ·   pentest AUTORIZADO",
+    "=============================================================",
+    "Alvo único: 10.10.13.37 (lab.ctf). Escopo em ~/scope.txt.",
+    "Tudo é simulado no seu navegador — nenhum pacote sai daqui.",
+    "",
+    "Missão: capturar 5 flags no formato HT{...} e registrar com:",
+    "    flag HT{...}            e ver o placar com:   flag",
+    "",
+    "Flag 1, de brinde, por ter lido o briefing:",
+    "    " + FLAG_WELCOME,
+    "",
+    "Pistas das outras quatro:",
+    "  2) Logs contam tudo ......... grep -i flag recon/auth.log",
+    "  3) O que começa com ponto ... ls -a",
+    "  4) Codificado não é cifrado . base64 -d loot/pista.b64",
+    "  5) Enumere TODAS as portas .. nmap -p- 10.10.13.37",
+    "=============================================================",
+    "",
+  ].join("\n");
+  const AUTH_LOG = [
+    "Oct 18 02:59:41 lab sshd[1201]: Server listening on 0.0.0.0 port 22.",
+    "Oct 18 03:01:07 lab sshd[1337]: Failed password for root from 45.9.2.11 port 51022 ssh2",
+    "Oct 18 03:01:09 lab sshd[1337]: Failed password for root from 45.9.2.11 port 51022 ssh2",
+    "Oct 18 03:01:12 lab sshd[1337]: Failed password for invalid user admin from 45.9.2.11 port 51022 ssh2",
+    "Oct 18 03:02:55 lab sshd[1340]: Accepted publickey for hacker from 10.10.13.5 port 40122 ssh2",
+    "Oct 18 03:02:55 lab sshd[1340]: pam_unix(sshd:session): session opened for user hacker(uid=1000)",
+    "Oct 18 03:07:18 lab sudo:   hacker : TTY=pts/0 ; PWD=/home/hacker ; USER=root ; COMMAND=/usr/bin/tcpdump",
+    "Oct 18 03:09:02 lab sshd[1402]: Failed password for invalid user oracle from 185.3.4.5 port 33110 ssh2",
+    "Oct 18 03:11:44 lab CRON[1450]: pam_unix(cron:session): session opened for user root(uid=0)",
+    "Oct 18 03:14:22 lab sshd[1511]: DEBUG esquecido pelo dev: flag de persistencia = HT{logs_sempre_contam_tudo}",
+    "Oct 18 03:15:01 lab sshd[1402]: Failed password for invalid user test from 185.3.4.5 port 33110 ssh2",
+    "Oct 18 03:18:37 lab sshd[1560]: Connection closed by 185.3.4.5 port 33110 [preauth]",
+    "Oct 18 03:21:10 lab systemd-logind[900]: New session 7 of user hacker.",
+    "Oct 18 03:25:59 lab sshd[1601]: Received disconnect from 10.10.13.5 port 40122:11: disconnected by user",
+  ].join("\n") + "\n";
+  const FLAGS = [
+    { value: FLAG_WELCOME,                    name: "Acesso inicial", pts: 10, hint: "leia o briefing:  mission" },
+    { value: "HT{logs_sempre_contam_tudo}",   name: "Nos logs",       pts: 20, hint: "grep -i flag recon/auth.log" },
+    { value: "HT{nada_fica_escondido}",       name: "Arquivo oculto", pts: 20, hint: "ls -a  no seu /home" },
+    { value: "HT{base64_nao_e_criptografia}", name: "Decodificacao",  pts: 25, hint: "base64 -d loot/pista.b64" },
+    { value: "HT{porta_fora_do_padrao}",      name: "Porta incomum",  pts: 25, hint: "nmap -p- 10.10.13.37, depois curl na porta" },
+  ];
 
   const fs = dir({
     home: dir({
       hacker: dir({
-        "hacker-terminal": dir({
-          assets: dir({ "hacker-terminal.svg": file("<svg …/>\n"), "org.hackerterminal.HackerTerminal.desktop": file("[Desktop Entry]\nName=Hacker Terminal\nExec=hacker-terminal\nIcon=hacker-terminal\nType=Application\nCategories=System;TerminalEmulator;\n") }),
-          bin: dir({ "ht-open": exe("#!/bin/sh\n# abre imagens e planilhas numa aba do Hacker Terminal\n"), "ht-askpass": exe("#!/bin/sh\n"), "ht-copy-key": exe("#!/bin/sh\n") }),
-          docs: dir({
-            "index.html": file("<!doctype html>\n<title>Hacker Terminal</title>\n<!-- esta página -->\n"),
-            screenshots: dir(Object.fromEntries(SCREENSHOTS.map((name) => [`${name}.png`, image(`screenshots/${name}.png`)]))),
-          }),
-          hackerterminal: dir({
-            ...Object.fromEntries(PY_FILES.map((name) => [`${name}.py`, source(`${name}.py`)])),
-            dialogs: dir(Object.fromEntries(["actions", "common", "editors", "history", "palette", "preferences", "result", "ssh"].map((n) => [`${n}.py`, source(`${n}.py`)]))),
-            window: dir(Object.fromEntries(["commands", "dropdown", "main", "output", "panel", "panes", "ssh", "viewer"].map((n) => [`${n}.py`, source(`${n}.py`)]))),
-            themes: dir(Object.fromEntries([...THEMES.values()].map((theme) => [`${theme.id}.ini`, file(themeIni(theme))]))),
-            soundpacks: dir(Object.fromEntries(DATA.soundpacks.map((pack) => [pack.id, dir({ "config.json": file(`{\n  "name": "${pack.name}",\n  "key_define_type": "multi"\n}\n`) })]))),
-          }),
-          packaging: dir({ "build-deb.sh": exe("#!/bin/sh\n"), "build_site.py": exe("#!/usr/bin/env python3\n\"\"\"Gera docs/index.html (este site) a partir do próprio app.\"\"\"\n") }),
-          tests: dir({ "smoke.sh": exe("#!/bin/sh\n"), "test_core.py": source("test_core.py") }),
-          "AUDIT.md": file("# Auditoria\n"),
-          "CHANGELOG.md": file(`# Novidades\n\n## ${VERSION}\n\n- Prévia ao vivo dos temas na paleta de comandos: o tema aparece na hora e volta ao anterior se você fechar sem escolher.\n- Diálogos de tema com botões claros; a janela de resultado das ações cresce com a saída.\n`),
-          "CONTRIBUTING.md": file("# Como contribuir\n\nRode `make check` antes de abrir um pull request.\n"),
-          "hacker_terminal.py": exe("#!/usr/bin/env python3\nfrom hackerterminal.app import main\n\nraise SystemExit(main())\n"),
-          "install.sh": exe("#!/bin/sh\n# instala em ~/.local, só para a sua conta\n"),
-          LICENSE: file("MIT License\n\nCopyright (c) Hacker Terminal\n"),
-          Makefile: file(".PHONY: run diagnose check check-gui deb\n\nrun:\n\t./run.sh\n\ndiagnose:\n\t./run.sh --diagnose\n\ncheck:\n\t./tests/smoke.sh\n\ndeb:\n\t./packaging/build-deb.sh \"$(DEB_OUTPUT_DIR)\"\n"),
-          "README.md": file("# Hacker Terminal\n\nUm terminal nativo para Linux, rápido e totalmente personalizável — com alma retrô.\n\nGTK 3 · VTE · Python · sem Electron, sem navegador, sem telemetria\n"),
-          "run.sh": exe("#!/bin/sh\nexec python3 \"$(dirname \"$0\")/hacker_terminal.py\" \"$@\"\n"),
+        "MISSION.txt": file(MISSION),
+        "scope.txt": file("# Escopo AUTORIZADO desta operacao (ficticio, simulado no navegador)\n10.10.13.37    lab.ctf\n# Fora deste escopo: nao tocar.\n"),
+        recon: dir({
+          "auth.log": file(AUTH_LOG),
+          "enum.md": file("# Enumeracao\n\n- [x] varredura rapida:   nmap lab.ctf\n- [ ] TODAS as portas:    nmap -p- 10.10.13.37   <- servicos incomuns moram aqui\n- [ ] versoes/banners:    nmap -sV -p- 10.10.13.37\n- [ ] falar com o servico: curl http://10.10.13.37:PORTA\n"),
         }),
-        labs: dir({
-          "alvos.txt": file("# só alvos com autorização por escrito\n10.0.0.5\n10.0.0.7\nscanme.nmap.org\n"),
-          "notas.md": file("# Notas do laboratório\n\n- [x] instalar o Hacker Terminal\n- [x] escolher um tema Fósforo\n- [ ] ligar o som do Holy Pandas\n"),
-          "scan.sh": exe("#!/bin/sh\nnmap -sV \"$1\"\n"),
+        loot: dir({
+          "pista.b64": file("SFR7YmFzZTY0X25hb19lX2NyaXB0b2dyYWZpYX0=\n"),
+          "captura.png": image("screenshots/hero.png"),
+          "credenciais.txt": file("# coletado do alvo, ainda sem uso\nadmin:$2y$10$Ro0t...(hash nao quebrado)\n"),
         }),
-        ".ssh": dir({ config: file("Host lab\n  HostName 10.0.0.5\n  User hacker\n"), "id_ed25519.pub": file("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI… hacker@lab\n"), known_hosts: file("") }),
+        ".segredo": file("Muito bem: ls -a revela os arquivos ocultos (os que comecam com ponto).\n\n  HT{nada_fica_escondido}\n\nRegistre com:  flag HT{nada_fica_escondido}\n"),
+        ".ssh": dir({ config: file("Host lab.ctf\n  HostName 10.10.13.37\n  User hacker\n"), "id_ed25519.pub": file("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI… hacker@lab\n"), known_hosts: file("") }),
         ".config": dir({
           "hacker-terminal": dir({
             "config.ini": file(configIni),
@@ -278,7 +287,7 @@
             themes: dir({}),
           }),
         }),
-        ".zshrc": file("# o Hacker Terminal lê o seu .zshrc normalmente\nautoload -U compinit && compinit\nsource ~/.zsh/zsh-autosuggestions.zsh\n"),
+        ".zshrc": file("# o Hacker Terminal le o seu .zshrc normalmente\nautoload -U compinit && compinit\nsource ~/.zsh/zsh-autosuggestions.zsh\n"),
       }),
     }),
     usr: dir({ bin: dir({}) }),
@@ -466,9 +475,9 @@
 
   const COMMANDS = {};
   const HELP_GROUPS = [
-    ["Arquivos", "ls cd pwd cat tree head tail grep wc sort echo printf touch mkdir rm"],
-    ["Sistema", "whoami hostname uname date uptime ps df free ip ss ping nmap history clear sleep exit"],
-    ["Projeto", "git neofetch ht-open hacker-terminal"],
+    ["Arquivos", "ls cd pwd cat tree head tail grep wc sort echo base64 touch mkdir rm"],
+    ["Rede e CTF", "nmap curl ping ip ss mission flag"],
+    ["Sistema", "whoami hostname uname date uptime ps df free neofetch ht-open history clear sleep exit"],
   ];
   const def = (names, fn) => names.split(" ").forEach((name) => { COMMANDS[name] = fn; });
   const out = (ctx, text = "", cls, style) => ctx.out.write(text + "\n", cls, style);
@@ -836,8 +845,10 @@
     out(ctx, "Swap:          1,0Gi          0B       1,0Gi");
     return 0;
   });
+  const CTF_IP = "10.10.13.37";
   function addressOf(name) {
     if (/^(localhost|127\.)/.test(name)) return "127.0.0.1";
+    if (/^(lab\.ctf|lab)$/i.test(name)) return CTF_IP;
     if (/^\d+\.\d+\.\d+\.\d+$/.test(name)) return name;
     const h = hash(name);
     return `${45 + (h % 150)}.${(h >> 8) % 256}.${(h >> 16) % 256}.${1 + ((h >> 24) % 254)}`;
@@ -871,24 +882,125 @@
   });
   def("nmap", async (ctx) => {
     const target = ctx.args.filter((a) => !a.startsWith("-")).pop();
-    if (!target) return fail(ctx, "nmap: informe um alvo. Ex.: nmap -sV scanme.nmap.org");
+    if (!target) return fail(ctx, "nmap: informe um alvo. Ex.: nmap -p- 10.10.13.37");
     const address = addressOf(target);
+    const argLine = ctx.args.join(" ");
+    const allPorts = ctx.args.includes("-p-") || /(^|[\s,])8080([\s,]|$)/.test(argLine);
     out(ctx, `Starting Nmap 7.95 ( https://nmap.org ) at ${new Date().toISOString().slice(0, 16).replace("T", " ")} -03`);
-    for (let t = 0; t < 14; t += 1) { if (ctx.aborted()) return 130; await sleep(100); }
+    for (let t = 0; t < 14; t += 1) { if (ctx.aborted()) return 130; await sleep(allPorts ? 130 : 90); }
     out(ctx, `Nmap scan report for ${target} (${address})`);
     out(ctx, "Host is up (0.012s latency).");
-    out(ctx, "Not shown: 996 closed tcp ports (reset)");
-    out(ctx, "PORT     STATE SERVICE VERSION", "b");
-    const services = [["22/tcp", "ssh", "OpenSSH 9.9p1 Debian 3 (protocol 2.0)"], ["80/tcp", "http", "nginx 1.26.3"],
-      ["443/tcp", "ssl/http", "nginx 1.26.3"], ["8000/tcp", "http", "SimpleHTTPServer 0.6 (Python 3.13.3)"]];
-    for (const [port, name, version] of services.slice(0, 2 + (hash(target) % 3))) {
+    const ctf = address === CTF_IP;
+    let services;
+    if (ctf) {
+      services = [["22/tcp", "ssh", "OpenSSH 9.9p1 Debian 3 (protocol 2.0)"], ["80/tcp", "http", "nginx 1.26.3"]];
+      if (allPorts) services.push(["8080/tcp", "http", "Werkzeug 3.0.1 (Python 3.13.3) — flag-server"]);
+    } else {
+      services = [["22/tcp", "ssh", "OpenSSH 9.9p1 Debian 3 (protocol 2.0)"], ["80/tcp", "http", "nginx 1.26.3"],
+        ["443/tcp", "ssl/http", "nginx 1.26.3"], ["8000/tcp", "http", "SimpleHTTPServer 0.6 (Python 3.13.3)"]].slice(0, 2 + (hash(target) % 3));
+    }
+    out(ctx, ctf && allPorts ? "Not shown: 65532 closed tcp ports (reset)" : "Not shown: 998 closed tcp ports (reset)");
+    out(ctx, "PORT     STATE SERVICE   VERSION", "b");
+    for (const [port, name, ver] of services) {
       ctx.out.write(pad(port, 9));
       ctx.out.write("open  ", "c2");
-      out(ctx, `${pad(name, 8)}${version}`);
+      out(ctx, `${pad(name, 10)}${ver}`);
     }
+    if (ctf && !allPorts) out(ctx, "(dica: a varredura padrao so ve portas comuns — rode  nmap -p- 10.10.13.37  para achar servicos incomuns)", "c8");
+    if (ctf && allPorts) out(ctx, "(porta 8080 aberta — fale com o servico:  curl http://10.10.13.37:8080 )", "c8");
     out(ctx, "Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .");
-    out(ctx, "Nmap done: 1 IP address (1 host up) scanned in 7.42 seconds");
-    out(ctx, "(simulação: nenhum pacote saiu do seu navegador)", "c8");
+    out(ctx, `Nmap done: 1 IP address (1 host up) scanned in ${allPorts ? "18.93" : "7.42"} seconds`);
+    out(ctx, "(simulacao: nenhum pacote saiu do seu navegador)", "c8");
+    return 0;
+  });
+
+  function decodeBase64(s) {
+    const bin = atob(s);
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  }
+  function encodeBase64(s) {
+    const bytes = new TextEncoder().encode(s);
+    let bin = "";
+    bytes.forEach((b) => { bin += String.fromCharCode(b); });
+    return btoa(bin);
+  }
+  def("base64", (ctx) => {
+    const decode = ctx.args.includes("-d") || ctx.args.includes("--decode");
+    const inputs = readInputs(ctx, "base64");
+    if (!inputs.length) return fail(ctx, "base64: informe um arquivo. Ex.: base64 -d loot/pista.b64", 1);
+    let code = 0;
+    for (const input of inputs) {
+      if (input.error) { code = fail(ctx, input.error); continue; }
+      try {
+        ctx.out.write((decode ? decodeBase64(input.text.replace(/\s+/g, "")) : encodeBase64(input.text)) + "\n");
+      } catch (error) {
+        code = fail(ctx, "base64: entrada invalida", 1);
+      }
+    }
+    return code;
+  });
+  def("curl wget", async (ctx) => {
+    const raw = ctx.args.filter((a) => !a.startsWith("-")).pop() || "";
+    if (!raw) return fail(ctx, "uso: curl http://10.10.13.37:8080", 2);
+    const parts = raw.match(/^(?:https?:\/\/)?([^/:]+)(?::(\d+))?(\/\S*)?$/);
+    if (!parts) return fail(ctx, `curl: (3) URL com host/porta invalido: ${raw}`, 3);
+    const port = parts[2] ? Number(parts[2]) : 80;
+    if (addressOf(parts[1]) !== CTF_IP) return fail(ctx, `curl: (6) Could not resolve host: ${parts[1]}`, 6);
+    for (let t = 0; t < 4; t += 1) { if (ctx.aborted()) return 130; await sleep(130); }
+    if (port === 8080) {
+      out(ctx, "<!doctype html>");
+      out(ctx, "<title>flag-server</title>");
+      out(ctx, "<h1>flag-server :8080</h1>");
+      out(ctx, "<p>Painel interno que vazou para fora. Olhe o codigo-fonte da pagina:</p>");
+      out(ctx, "<!-- HT{porta_fora_do_padrao} -->", "c8");
+      out(ctx, "<p>Registre: flag HT{porta_fora_do_padrao}</p>");
+      return 0;
+    }
+    if (port === 80 || port === 443) {
+      out(ctx, "<!doctype html>");
+      out(ctx, "<title>lab.ctf</title>");
+      out(ctx, "<h1>It works! nginx</h1>");
+      out(ctx, "<p>Pagina padrao. Nada de util na porta 80.</p>");
+      out(ctx, "<!-- dev: o painel interno subiu de novo numa porta alta... -->", "c8");
+      return 0;
+    }
+    return fail(ctx, `curl: (7) Failed to connect to ${parts[1]} port ${port}: Connection refused`, 7);
+  });
+  function flagScoreboard(ctx) {
+    out(ctx, "CTF · Laboratorio Fantasma", "b");
+    let score = 0;
+    let total = 0;
+    let got = 0;
+    for (const challenge of FLAGS) {
+      total += challenge.pts;
+      const has = app.ctfFound.has(challenge.value);
+      if (has) { score += challenge.pts; got += 1; }
+      ctx.out.write("  " + (has ? "[x] " : "[ ] "), has ? "c2" : "c1");
+      ctx.out.write(pad(challenge.name, 16), has ? "c2" : "");
+      ctx.out.write(padStart(`${challenge.pts} pts`, 8) + "  ");
+      out(ctx, has ? "capturada" : challenge.hint, "dim");
+    }
+    out(ctx);
+    out(ctx, `Placar: ${got}/${FLAGS.length} flags · ${score}/${total} pontos`, got === FLAGS.length ? "c2 b" : "b");
+    if (got === FLAGS.length) out(ctx, "Laboratorio concluido! Agora e so instalar o Hacker Terminal de verdade.", "c3 b");
+    else out(ctx, "Registre uma flag com:  flag HT{...}", "dim");
+    return 0;
+  }
+  def("flag flags ctf", (ctx) => {
+    const token = ctx.args.find((a) => /^HT\{/.test(a)) || (ctx.args[0] === "submit" ? ctx.args[1] : null);
+    if (!token) return flagScoreboard(ctx);
+    const match = FLAGS.find((challenge) => challenge.value === token);
+    if (!match) return fail(ctx, `flag invalida: ${token}  (confira letra por letra; o formato e HT{...})`);
+    if (app.ctfFound.has(token)) { out(ctx, `ja registrada: ${match.name}`, "c3"); return 0; }
+    app.ctfFound.add(token);
+    out(ctx, `flag aceita: ${match.name}  (+${match.pts} pts)`, "c2 b");
+    if (app.ctfFound.size === FLAGS.length) out(ctx, "Todas as 5! Digite  flag  para o placar final.", "c3 b");
+    else out(ctx, `faltam ${FLAGS.length - app.ctfFound.size}. Veja o placar com:  flag`, "dim");
+    return 0;
+  });
+  def("mission missao briefing", (ctx) => {
+    ctx.out.write(MISSION, "c3");
     return 0;
   });
 
@@ -1282,7 +1394,7 @@
     constructor(tab, cwd) {
       this.tab = tab;
       this.id = ++paneCounter;
-      this.cwd = cwd || `${HOME}/hacker-terminal`;
+      this.cwd = cwd || HOME;
       this.oldCwd = null;
       this.env = { HOME, USER, SHELL: "/usr/bin/zsh", TERM: "xterm-256color", LANG: "pt_BR.UTF-8", HACKER_TERMINAL_VERSION: VERSION };
       this.history = app.sharedHistory;
@@ -1604,6 +1716,7 @@
     commandLog: [],
     rain,
     overlay: null,
+    ctfFound: new Set(),
 
     build() {
       const icon = (path) => {
@@ -1722,7 +1835,7 @@
       tab.panes.forEach((p) => { p.aborted = true; p.waitingKey = false; });
       this.tabs.splice(index, 1);
       if (!this.tabs.length) {
-        this.newTab(`${HOME}/hacker-terminal`);
+        this.newTab(HOME);
         this.focusedPane().write("A última aba foi fechada; no app, a janela fecharia. Aqui, começamos de novo.\n", "c8");
         this.focusedPane().renderInput();
         return;
@@ -2346,7 +2459,7 @@
       };
       const dialog = el("div", { class: "ht-dialog", role: "dialog", "aria-label": action.label },
         el("h4", { text: action.label }),
-        el("span", { class: "sub", text: "Os valores entram protegidos por aspas: “10.0.0.5; rm -rf ~” vira um único argumento e nunca é executado." }),
+        el("span", { class: "sub", text: "Os valores entram protegidos por aspas: “10.10.13.37; rm -rf ~” vira um único argumento e nunca é executado." }),
         ...action.fields.map((f, i) => el("div", { class: "ht-field" }, el("span", { text: f.name }), inputs[i])),
         el("span", { class: "sub", text: "Comando final:" }), preview,
         el("div", { class: "ht-row" }, el("button", { type: "button", class: "ht-action", onclick: () => this.closeOverlay() }, "Cancelar"), run));
@@ -2388,13 +2501,15 @@
     start() {
       this.build();
       this.apply();
-      const tab = this.newTab(`${HOME}/hacker-terminal`, false);
+      const tab = this.newTab(HOME, false);
       const pane = tab.panes[0];
-      pane.write(`Hacker Terminal ${VERSION} · demonstração no navegador\n`, "c8");
-      pane.write("Digite ", "c8");
+      pane.write(`Hacker Terminal ${VERSION} · laboratorio CTF simulado no navegador\n`, "c8");
+      pane.write("Missao autorizada: capture 5 flags. Digite ", "c8");
+      pane.write("mission", "c2");
+      pane.write(" para o briefing, ", "c8");
       pane.write("help", "c2");
-      pane.write(" para ver os comandos. Tab completa, ↑ recupera o histórico.\n\n", "c8");
-      pane.submit("ls").then(() => pane.submit("git log --oneline -3"));
+      pane.write(" para os comandos.\n\n", "c8");
+      pane.submit("ls").then(() => pane.submit("mission"));
       document.getElementById("demo-try")?.addEventListener("click", (event) => {
         const button = event.target.closest("[data-run]");
         if (button) this.typeCommand(button.dataset.run);
