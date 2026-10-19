@@ -171,6 +171,7 @@ def main() -> int:
         marker = f'"{name}"'
         assert page.count(marker) == 1, f"esperava uma referência a {name}"
         page = page.replace(marker, f'"{name}?v={digest}"')
+    shutil.copyfile(SITE / "three.min.js", DOCS / "three.min.js")  # self-hosted, no third-party CDN
     (DOCS / "index.html").write_text(page, encoding="utf-8")
     (DOCS / ".nojekyll").touch()  # serve the files as they are
     print(f"docs/index.html: versão {VERSION}, {len(names)} temas, demonstração interativa")
