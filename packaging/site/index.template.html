@@ -318,9 +318,18 @@ kbd { box-shadow: 0 0 10px rgba(57,255,136,0.12); }
   .hero h1 { animation: hglitch 7s infinite; }
 }
 @keyframes hglitch { 0%,92%,100% { clip-path: none; transform: none; } 93% { transform: translate(-2px,0); } 94% { transform: translate(2px,0); } 95% { transform: none; } }
+/* boot intro + scroll progress */
+#boot { position: fixed; inset: 0; z-index: 100; background: #06080a; display: grid; place-items: center; transition: opacity 600ms var(--ease); }
+#boot.done { opacity: 0; pointer-events: none; }
+#boot pre { margin: 0; width: min(90vw, 470px); font: 14px/1.75 var(--mono); color: var(--accent); text-shadow: 0 0 12px rgba(57,255,136,0.5); white-space: pre-wrap; }
+#boot .cur { animation: bcur 1s steps(1) infinite; }
+@keyframes bcur { 50% { opacity: 0; } }
+#progress { position: fixed; top: 0; left: 0; height: 2px; width: 0; z-index: 30; background: var(--accent); box-shadow: 0 0 12px rgba(57,255,136,0.85); transition: width 120ms linear; }
 </style>
 </head>
 <body>
+<div id="boot" aria-hidden="true"><pre id="boot-log"></pre></div>
+<div id="progress" aria-hidden="true"></div>
 <div id="space" aria-hidden="true"></div>
 <div class="crt-lines" aria-hidden="true"></div>
 <div class="crt-vig" aria-hidden="true"></div>
@@ -618,6 +627,40 @@ kbd { box-shadow: 0 0 10px rgba(57,255,136,0.12); }
   /* ONE WebGL scene behind the whole page: a starfield flying past plus the hero's
      wireframe core on the right, which fades out as you scroll past the hero. One
      context, one loop, ~40fps. Falls back to a 2D starfield + globe without WebGL. */
+  /* shared scroll state for the scene and the progress bar */
+  let scrollVel = 0, lastY = scrollY;
+  const prog = document.getElementById("progress");
+  addEventListener("scroll", () => {
+    const h = document.documentElement.scrollHeight - innerHeight;
+    if (prog) prog.style.width = (h > 0 ? (scrollY / h) * 100 : 0) + "%";
+    scrollVel = Math.min(1.5, scrollVel + Math.abs(scrollY - lastY) / 90); lastY = scrollY;
+  }, { passive: true });
+
+  /* boot intro: a quick terminal boot, then it lifts to reveal the page (once per session) */
+  (function boot() {
+    const el = document.getElementById("boot");
+    if (!el) return;
+    let played = null; try { played = sessionStorage.getItem("ht-booted"); } catch (e) {}
+    if (reduce || played) { el.remove(); return; }
+    try { sessionStorage.setItem("ht-booted", "1"); } catch (e) {}
+    const log = document.getElementById("boot-log");
+    const lines = ["hacker-terminal :: boot", "[ ok ] nucleo GTK/VTE carregado", "[ ok ] 22 temas  .  18 teclados reais", "[ ok ] monitor de recursos", "[ ok ] laboratorio CTF pronto", "> iniciando sessao..."];
+    let li = 0, ci = 0, timer = 0;
+    const finish = () => { el.classList.add("done"); setTimeout(() => el.remove(), 650); removeEventListener("keydown", skip); removeEventListener("pointerdown", skip); };
+    const step = () => {
+      if (li >= lines.length) { timer = setTimeout(finish, 380); return; }
+      const line = lines[li];
+      if (ci <= line.length) {
+        const base = lines.slice(0, li).join("\n");
+        log.innerHTML = (base ? base + "\n" : "") + line.slice(0, ci) + '<span class="cur">_</span>';
+        ci++; timer = setTimeout(step, 15 + Math.random() * 20);
+      } else { li++; ci = 0; timer = setTimeout(step, 110); }
+    };
+    const skip = () => { clearTimeout(timer); finish(); };
+    addEventListener("keydown", skip); addEventListener("pointerdown", skip);
+    timer = setTimeout(step, 180);
+  })();
+
   const space = document.getElementById("space");
   (function cyber() {
     if (!space) return;
@@ -669,7 +712,8 @@ kbd { box-shadow: 0 0 10px rgba(57,255,136,0.12); }
         raf = requestAnimationFrame(frame);
         if (now - last < 24) return; last = now;
         t += 0.016;
-        for (let i = 0; i < COUNT; i++) { starPos[i*3+2] += starSpd[i]*2; if (starPos[i*3+2] > 9) { starPos[i*3+2] = -58; starPos[i*3] = (Math.random()-0.5)*50; starPos[i*3+1] = (Math.random()-0.5)*34; } }
+        const boost = 2 + scrollVel * 7; scrollVel *= 0.9;
+        for (let i = 0; i < COUNT; i++) { starPos[i*3+2] += starSpd[i]*boost; if (starPos[i*3+2] > 9) { starPos[i*3+2] = -58; starPos[i*3] = (Math.random()-0.5)*50; starPos[i*3+1] = (Math.random()-0.5)*34; } }
         stars.geometry.attributes.position.needsUpdate = true;
         core.rotation.y += 0.004; core.rotation.x += 0.0015; inner.rotation.y -= 0.006;
         const fade = Math.max(0, 1 - scrollY / (innerHeight * 0.72));
