@@ -1,27 +1,6 @@
 /* Interactive demo: a simulated Hacker Terminal window. Every colour comes from the
    app's own theme files (custom properties set by demo.js), so the window looks like
    the GTK one: header with four buttons, optional tabs, panes, side panel, status bar. */
-.ht-demo { --term-h: clamp(380px, 62vh, 560px); position: relative; min-height: calc(var(--term-h) + 70px); }
-.demo-try { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; font-size: 14px; }
-.demo-try button { min-height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface);
-  color: var(--ink); font: 500 13px/1 var(--mono); cursor: pointer; transition: background-color 150ms, transform 120ms; }
-.demo-try button:hover { background: var(--sunken); }
-.demo-try button:active { transform: scale(0.98); }
-.demo-note { margin-top: 14px; font-size: 14px; }
-
-.ctf-flags { margin-top: 22px; max-width: 560px; padding: clamp(16px, 2.2vw, 22px); border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
-.ctf-flags.ctf-done { border-color: var(--green); }
-.ctf-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.ctf-head h3 { margin: 0; font: 600 16px/1.2 var(--sans); }
-.ctf-count { font: 500 13px/1 var(--mono); color: var(--muted); white-space: nowrap; }
-.ctf-row { display: flex; gap: 8px; margin-top: 12px; }
-.ctf-row input { flex: 1; min-width: 0; min-height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); font: 500 14px/1 var(--mono); }
-.ctf-row input:focus { outline: 2px solid color-mix(in srgb, var(--ink) 38%, transparent); outline-offset: 1px; border-color: color-mix(in srgb, var(--ink) 38%, var(--line)); }
-.ctf-row .button { min-height: 40px; white-space: nowrap; }
-.ctf-dots { margin-top: 14px; font-size: 17px; letter-spacing: 7px; color: var(--green); }
-.ctf-msg { margin: 10px 0 0; font-size: 14px; color: var(--muted); }
-.ctf-msg.ok { color: var(--green); }
-.ctf-msg.err { color: var(--red); }
 
 .ht { position: relative; display: flex; flex-direction: column; height: calc(var(--term-h) + 70px); overflow: hidden;
   border: 1px solid var(--ui-border); border-radius: 12px; background: var(--t-bg); color: var(--ui-fg);

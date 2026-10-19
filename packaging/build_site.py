@@ -147,8 +147,13 @@ def main() -> int:
         theme = themes.get(identifier)
         dots = "".join(f'<i style="background:{color}"></i>' for color in theme.ansi[1:7])
         swatches.append(
-            f'<div class="swatch" style="background:{theme.terminal_background};color:{theme.terminal_foreground}">'
-            f"<span>{html.escape(theme.name)}</span><span class=\"dots\" aria-hidden=\"true\">{dots}</span></div>"
+            '<div class="theme-tile reveal" data-ui>'
+            f'<div class="face" style="background:{theme.terminal_background};color:{theme.terminal_foreground}">'
+            f'<span class="l1"><i style="color:{theme.accent}">hacker@lab</i> ~ $ ls</span>'
+            f'<span class="l2">bin   docs   scan.sh</span>'
+            f'<span class="pal" aria-hidden="true">{dots}</span></div>'
+            f'<div class="strip"><b>{html.escape(theme.name)}</b><span>{html.escape(theme.identifier)}</span></div>'
+            "</div>"
         )
     names = sorted((theme.name for theme in themes.all()), key=str.casefold)
     page = (SITE / "index.template.html").read_text(encoding="utf-8")
