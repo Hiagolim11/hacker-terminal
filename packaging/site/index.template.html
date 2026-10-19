@@ -282,9 +282,47 @@ footer { padding-top: clamp(96px, 13vw, 168px); padding-bottom: 48px; }
   .theme-wide { grid-column: auto; }
   .hero-actions .btn { flex: 1 1 auto; }
 }
+
+/* ---------- cyber layer: a starfield behind everything, CRT scanlines, neon glow ---------- */
+#space { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+#space canvas { width: 100% !important; height: 100% !important; display: block; }
+.nav, main, footer { position: relative; z-index: 1; }
+body { background: #080b09; }
+/* faint CRT scanlines + vignette over the whole page */
+.crt-lines, .crt-vig { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
+.crt-lines { background-image: repeating-linear-gradient(0deg, rgba(0,0,0,0.16) 0 1px, rgba(0,0,0,0) 1px 3px); opacity: 0.45; }
+.crt-vig { background: radial-gradient(130% 100% at 50% 12%, rgba(0,0,0,0) 52%, rgba(0,0,0,0.55) 100%); }
+@media (prefers-reduced-motion: no-preference) { .crt-lines { animation: crtroll 8s linear infinite; } }
+@keyframes crtroll { to { background-position: 0 96px; } }
+/* neon glow */
+.hero h1 { text-shadow: 0 0 26px rgba(57,255,136,0.22), 0 0 2px rgba(57,255,136,0.25); }
+.head h2, .ctf-copy h2, .faq-head h2, .foot-cta h2, .install h2, .showcase h2 { text-shadow: 0 0 22px rgba(57,255,136,0.16); }
+.btn { box-shadow: 0 0 22px rgba(57,255,136,0.38); }
+.btn:hover { box-shadow: 0 0 34px rgba(57,255,136,0.6); }
+.btn.secondary { box-shadow: inset 0 0 0 1px rgba(57,255,136,0.22); }
+.brand .mark { box-shadow: 0 0 18px rgba(57,255,136,0.55); }
+.cell, .theme-tile, .faq details, .ctf-flags, .code { box-shadow: inset 0 0 0 1px rgba(57,255,136,0.07); }
+.cell:hover, .theme-tile:hover { box-shadow: 0 0 34px rgba(57,255,136,0.14), inset 0 0 0 1px rgba(57,255,136,0.28); }
+.ht-demo { box-shadow: 0 0 70px rgba(57,255,136,0.12), inset 0 0 0 1px rgba(57,255,136,0.2); }
+.theme-tile .face, .frag.term, .frag.statusbar, .frag.split { box-shadow: inset 0 0 40px rgba(57,255,136,0.05); }
+kbd { box-shadow: 0 0 10px rgba(57,255,136,0.12); }
+.theme-wide, .theme-shot { box-shadow: 0 0 36px rgba(57,255,136,0.1), inset 0 0 0 1px rgba(57,255,136,0.2); }
+.theme-wide:hover, .theme-shot:hover { box-shadow: 0 0 46px rgba(57,255,136,0.2), inset 0 0 0 1px rgba(57,255,136,0.4); }
+.cell .frag img { filter: saturate(1.05) contrast(1.03); }
+.cell .frag[data-ui] { box-shadow: inset 0 0 0 1px rgba(57,255,136,0.12); }
+/* a scanning sheen across the terminal */
+.stage::after { content: ""; position: absolute; inset: 0; z-index: 3; pointer-events: none; border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(57,255,136,0.08), rgba(57,255,136,0) 18%); mix-blend-mode: screen; }
+@media (prefers-reduced-motion: no-preference) {
+  .hero h1 { animation: hglitch 7s infinite; }
+}
+@keyframes hglitch { 0%,92%,100% { clip-path: none; transform: none; } 93% { transform: translate(-2px,0); } 94% { transform: translate(2px,0); } 95% { transform: none; } }
 </style>
 </head>
 <body>
+<div id="space" aria-hidden="true"></div>
+<div class="crt-lines" aria-hidden="true"></div>
+<div class="crt-vig" aria-hidden="true"></div>
 <header class="nav" id="nav">
   <div class="container nav-inner">
     <a class="brand" href="#top">
@@ -575,6 +613,46 @@ footer { padding-top: clamp(96px, 13vw, 168px); padding-bottom: 48px; }
   /* 3D hero — a WebGL field of neon points flowing in perspective (Three.js), the terminal
      sitting over it. Reduced motion or no WebGL falls back to the flat dark hero. */
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* a field of stars flying past, fixed behind the whole page — 3D on every section */
+  const space = document.getElementById("space");
+  if (space && window.THREE) {
+    try {
+      const T = window.THREE;
+      const rend = new T.WebGLRenderer({ antialias: false, powerPreference: "low-power" });
+      rend.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5));
+      rend.setClearColor(0x080b09, 1);
+      space.appendChild(rend.domElement);
+      const sc = new T.Scene(); sc.fog = new T.FogExp2(0x080b09, 0.055);
+      const cam = new T.PerspectiveCamera(72, 1, 0.1, 70); cam.position.z = 10;
+      const COUNT = 2800, pos = new Float32Array(COUNT * 3), spd = new Float32Array(COUNT), col = new Float32Array(COUNT * 3);
+      for (let i = 0; i < COUNT; i++) {
+        pos[i * 3] = (Math.random() - 0.5) * 48; pos[i * 3 + 1] = (Math.random() - 0.5) * 32; pos[i * 3 + 2] = -Math.random() * 55;
+        spd[i] = 0.04 + Math.random() * 0.14;
+        const bright = Math.random() > 0.78; col[i * 3] = bright ? 0.6 : 0.18; col[i * 3 + 1] = 1; col[i * 3 + 2] = bright ? 0.85 : 0.5;
+      }
+      const g = new T.BufferGeometry();
+      g.setAttribute("position", new T.BufferAttribute(pos, 3));
+      g.setAttribute("color", new T.BufferAttribute(col, 3));
+      const stars = new T.Points(g, new T.PointsMaterial({ size: 0.09, vertexColors: true, transparent: true, opacity: 0.9, blending: T.AdditiveBlending, depthWrite: false, sizeAttenuation: true }));
+      sc.add(stars);
+      let sX = 0, sY = 0;
+      addEventListener("pointermove", (e) => { sX = e.clientX / innerWidth - 0.5; sY = e.clientY / innerHeight - 0.5; }, { passive: true });
+      const rs = () => { rend.setSize(innerWidth, innerHeight, false); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); };
+      rs(); addEventListener("resize", rs, { passive: true });
+      const a = g.attributes.position.array;
+      let r2 = 0, vis2 = true;
+      const fr = () => {
+        for (let i = 0; i < COUNT; i++) { a[i * 3 + 2] += spd[i] * 2.2; if (a[i * 3 + 2] > 9) { a[i * 3 + 2] = -55; a[i * 3] = (Math.random() - 0.5) * 48; a[i * 3 + 1] = (Math.random() - 0.5) * 32; } }
+        g.attributes.position.needsUpdate = true;
+        cam.position.x += (sX * 4 - cam.position.x) * 0.03; cam.position.y += (-sY * 3 - cam.position.y) * 0.03; cam.lookAt(0, 0, -20);
+        rend.render(sc, cam); r2 = requestAnimationFrame(fr);
+      };
+      const run2 = () => { cancelAnimationFrame(r2); if (vis2 && !document.hidden) r2 = requestAnimationFrame(fr); };
+      run2(); document.addEventListener("visibilitychange", run2);
+    } catch (e) { /* no WebGL: the flat dark background stays */ }
+  }
+
   const mount = document.getElementById("three");
   if (mount && window.THREE) {
     try {
