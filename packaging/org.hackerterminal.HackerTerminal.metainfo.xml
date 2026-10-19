@@ -7,12 +7,15 @@
   <summary>Native retro terminal for Linux</summary>
   <summary xml:lang="pt-BR">Terminal retrô nativo para Linux</summary>
   <description>
-    <p>A lightweight tabbed GTK/VTE terminal with history search, validated custom themes, persistent preferences, verified Powerline font support and optional retro visual effects.</p>
-  </description>
-  <description xml:lang="pt-BR">
-    <p>Um terminal GTK/VTE leve com abas, busca no histórico, temas personalizados validados, preferências persistentes, suporte Powerline verificado e efeitos visuais retrô opcionais.</p>
+    <p>Hacker Terminal is a lightweight GTK 3 and VTE terminal for Linux with tabs, split panes, a drop-down window, session restore, project context, history search across tabs, validated custom themes, an optional resource monitor and mechanical keyboard sound — no Electron, no browser, no telemetry.</p>
+    <p xml:lang="pt-BR">O Hacker Terminal é um terminal GTK 3 e VTE leve para Linux, com abas, painéis divididos, terminal suspenso, restauração de sessão, contexto de projeto, busca no histórico entre abas, temas personalizados validados, monitor de recursos opcional e som de teclado mecânico — sem Electron, sem navegador, sem telemetria.</p>
   </description>
   <launchable type="desktop-id">org.hackerterminal.HackerTerminal.desktop</launchable>
+  <url type="homepage">https://hiagolim11.github.io/hacker-terminal/</url>
+  <url type="bugtracker">https://github.com/Hiagolim11/hacker-terminal/issues</url>
+  <developer id="io.github.hiagolim11">
+    <name>Hacker Terminal Contributors</name>
+  </developer>
   <provides>
     <binary>hacker-terminal</binary>
   </provides>
