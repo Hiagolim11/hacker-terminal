@@ -83,9 +83,10 @@ kbd { font-family: var(--mono); font-size: 0.8em; background: var(--tile-2); col
 .nav-links .btn { min-height: 40px; padding: 0 16px; }
 
 /* ---------- hero: headline, then the product performing ---------- */
-.hero { position: relative; padding-top: clamp(48px, 8vw, 96px); padding-bottom: clamp(40px, 6vw, 72px); }
+.hero { position: relative; min-height: 92svh; display: grid; align-content: center; overflow: hidden; padding-top: clamp(84px, 13vh, 150px); padding-bottom: clamp(48px, 7vw, 96px); }
 .hero > .container { position: relative; z-index: 1; }
-#grid { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; opacity: 0.75; }
+#three { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+#three canvas { width: 100% !important; height: 100% !important; display: block; }
 .hero h1 { font-size: clamp(2.1rem, 0.6rem + 6.2vw, 6.2rem); line-height: 0.92; max-width: 16ch; }
 .hero h1 .ln { display: block; overflow: hidden; }
 .hero h1 .ln > span { display: block; }
@@ -95,12 +96,9 @@ kbd { font-family: var(--mono); font-size: 0.8em; background: var(--tile-2); col
 .hero-meta b { color: var(--ink); font-weight: 600; }
 
 /* the terminal stage: the running product, big, on a darker field */
-.stage { margin-top: clamp(40px, 6vw, 72px); position: relative; perspective: 1500px; perspective-origin: 50% 24%; }
+.stage { margin-top: clamp(40px, 6vw, 72px); position: relative; }
 .ht-demo { --term-h: clamp(420px, 64vh, 620px); position: relative; min-height: calc(var(--term-h) + 70px);
-  border-radius: var(--radius); overflow: hidden;
-  transform: rotateX(var(--rx, 7deg)) rotateY(var(--ry, 0deg)); transform-style: preserve-3d;
-  transition: transform 260ms var(--ease); will-change: transform; }
-@media (prefers-reduced-motion: reduce) { .ht-demo { transform: none; } }
+  border-radius: var(--radius); overflow: hidden; }
 .demo-try { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-top: 18px; }
 .demo-try .label { font-size: 15px; color: var(--muted); margin-right: 2px; }
 .demo-try button { min-height: 38px; padding: 0 14px; border: 0; border-radius: 7px; background: var(--tile);
@@ -305,8 +303,8 @@ footer { padding-top: clamp(96px, 13vw, 168px); padding-bottom: 48px; }
 </header>
 
 <main id="top">
-  <section class="hero" id="experimente" aria-labelledby="hero-title">
-    <canvas id="grid" aria-hidden="true"></canvas>
+  <section class="hero" aria-labelledby="hero-title">
+    <div id="three" aria-hidden="true"></div>
     <div class="container">
       <h1 id="hero-title"><span class="ln"><span>Um terminal com</span></span><span class="ln"><span>cara própria.</span></span></h1>
       <p class="lead hero-lead reveal">Nativo para Linux, abre em menos de um segundo. 22 temas CRT e neon, som de 18 teclados mecânicos reais e um monitor de recursos. Sem Electron, sem navegador, sem telemetria: teste agora mesmo, aqui embaixo.</p>
@@ -315,7 +313,15 @@ footer { padding-top: clamp(96px, 13vw, 168px); padding-bottom: 48px; }
         <a class="btn secondary" href="https://github.com/Hiagolim11/hacker-terminal">Ver o código</a>
       </div>
       <p class="hero-meta reveal">Licença <b>MIT</b> &nbsp;·&nbsp; <b>GTK 3</b> + VTE &nbsp;·&nbsp; em português &nbsp;·&nbsp; <b>~2,5 MB</b></p>
+    </div>
+  </section>
 
+  <section class="showcase" id="experimente" aria-labelledby="exp-title">
+    <div class="container">
+      <div class="head reveal">
+        <h2 id="exp-title">Teste no navegador.</h2>
+        <p>O shell de demonstração, com os temas, perfis e sons do app de verdade, montado como um CTF sem dicas.</p>
+      </div>
       <div class="stage reveal">
         <div class="ht-demo" id="demo" data-ui data-version="0.22.0">
           <noscript><img src="screenshots/hero.png" width="1280" height="760" alt="Janela do Hacker Terminal no tema Zero Day"></noscript>
@@ -535,6 +541,7 @@ footer { padding-top: clamp(96px, 13vw, 168px); padding-bottom: 48px; }
   </div>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
 <script>
 (() => {
   const nav = document.getElementById("nav");
@@ -565,67 +572,66 @@ footer { padding-top: clamp(96px, 13vw, 168px); padding-bottom: 48px; }
     if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => done("Copiado"), select); else select();
   });
 
-  /* 3D — a neon grid in perspective behind the hero, drawn on a canvas (not CSS, so no
-     gradients or rule lines in the chrome); the terminal floats and leans over it. */
+  /* 3D hero — a WebGL field of neon points flowing in perspective (Three.js), the terminal
+     sitting over it. Reduced motion or no WebGL falls back to the flat dark hero. */
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const fine = matchMedia("(pointer: fine)").matches;
-  const grid = document.getElementById("grid");
-  if (grid && grid.getContext) {
-    const ctx = grid.getContext("2d");
-    const dpr = Math.min(devicePixelRatio || 1, 2);
-    let W = 0, H = 0, off = 0, raf = 0, visible = true;
-    const size = () => { W = grid.width = Math.max(1, grid.offsetWidth * dpr); H = grid.height = Math.max(1, grid.offsetHeight * dpr); };
-    const draw = () => {
-      ctx.clearRect(0, 0, W, H);
-      const hz = H * 0.46, vx = W / 2;
-      ctx.lineWidth = Math.max(1, dpr);
-      ctx.strokeStyle = "#39ff88";
-      const cols = 22;
-      for (let i = -cols; i <= cols; i++) {
-        ctx.globalAlpha = 0.26 * (1 - Math.abs(i) / cols);
-        ctx.beginPath(); ctx.moveTo(vx, hz); ctx.lineTo(vx + (i / cols) * W * 1.5, H); ctx.stroke();
+  const mount = document.getElementById("three");
+  if (mount && window.THREE && !reduce) {
+    try {
+      const THREE = window.THREE;
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "low-power" });
+      renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.75));
+      renderer.setClearColor(0x000000, 0);
+      mount.appendChild(renderer.domElement);
+      const scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x0a0d0b, 0.04);
+      const camera = new THREE.PerspectiveCamera(58, 1, 0.1, 140);
+      camera.position.set(0, 3.4, 13.5);
+
+      const N = 84, SP = 1.05, HALF = (N - 1) * SP / 2, count = N * N;
+      const positions = new Float32Array(count * 3);
+      const base = new Float32Array(count * 2);
+      for (let z = 0, i = 0; z < N; z++) for (let x = 0; x < N; x++, i++) {
+        const X = x * SP - HALF, Z = z * SP - HALF;
+        positions[i * 3] = X; positions[i * 3 + 1] = 0; positions[i * 3 + 2] = Z;
+        base[i * 2] = X; base[i * 2 + 1] = Z;
       }
-      const rows = 18;
-      for (let j = 0; j < rows; j++) {
-        const t = ((j + off) % rows) / rows, y = hz + (H - hz) * (t * t);
-        ctx.globalAlpha = 0.3 * t;
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-      }
-      ctx.globalAlpha = 1;
-    };
-    const tick = () => { off = (off + 0.01) % 1; draw(); raf = requestAnimationFrame(tick); };
-    const run = () => { cancelAnimationFrame(raf); if (reduce || !visible || document.hidden) { draw(); } else { tick(); } };
-    size(); run();
-    addEventListener("resize", () => { size(); run(); }, { passive: true });
-    document.addEventListener("visibilitychange", run);
-    if ("IntersectionObserver" in window) {
-      new IntersectionObserver((e) => { visible = e[0].isIntersecting; run(); }).observe(grid);
-    }
-  }
-  /* the terminal leans back over the grid, turns a little toward the pointer, and settles flat as it scrolls away */
-  const termEl = document.querySelector(".ht-demo"), heroEl = document.querySelector(".hero");
-  if (termEl && heroEl && !reduce && fine) {
-    let px = 0;
-    const set = () => {
-      const r = heroEl.getBoundingClientRect();
-      const settle = Math.max(0, Math.min(1, r.bottom / innerHeight));
-      termEl.style.setProperty("--rx", (7 * settle).toFixed(2) + "deg");
-      termEl.style.setProperty("--ry", (px * 5).toFixed(2) + "deg");
-    };
-    addEventListener("scroll", set, { passive: true });
-    addEventListener("pointermove", (e) => { px = e.clientX / innerWidth - 0.5; set(); }, { passive: true });
-    set();
-  }
-  /* the cells and theme tiles tip toward the pointer in 3D */
-  if (!reduce && fine) {
-    document.querySelectorAll(".cell, .theme-tile").forEach((el) => {
-      el.addEventListener("pointermove", (e) => {
-        const r = el.getBoundingClientRect();
-        const dx = (e.clientX - r.left) / r.width - 0.5, dy = (e.clientY - r.top) / r.height - 0.5;
-        el.style.transform = `perspective(900px) rotateY(${(dx * 6).toFixed(2)}deg) rotateX(${(-dy * 6).toFixed(2)}deg) translateY(-4px)`;
-      });
-      el.addEventListener("pointerleave", () => { el.style.transform = ""; });
-    });
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      const mat = new THREE.PointsMaterial({ color: 0x39ff88, size: 0.085, sizeAttenuation: true,
+        transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false });
+      const field = new THREE.Points(geo, mat);
+      scene.add(field);
+
+      let mx = 0, my = 0;
+      addEventListener("pointermove", (e) => { mx = e.clientX / innerWidth - 0.5; my = e.clientY / innerHeight - 0.5; }, { passive: true });
+      const resize = () => {
+        const w = mount.clientWidth || 1, h = mount.clientHeight || 1;
+        renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+      };
+      resize(); addEventListener("resize", resize, { passive: true });
+
+      const attr = geo.attributes.position;
+      let t = 0, raf = 0, visible = true;
+      const frame = () => {
+        t += 0.015;
+        for (let i = 0; i < count; i++) {
+          const X = base[i * 2], Z = base[i * 2 + 1];
+          attr.array[i * 3 + 1] = Math.sin(X * 0.26 + t) * 0.95 + Math.cos(Z * 0.3 + t * 0.8) * 0.95
+            + Math.sin((X + Z) * 0.13 + t * 1.25) * 0.5;
+        }
+        attr.needsUpdate = true;
+        camera.position.x += (mx * 11 - camera.position.x) * 0.035;
+        camera.position.y += (3.4 - my * 2.6 - camera.position.y) * 0.035;
+        camera.lookAt(0, 2.4, -7);
+        renderer.render(scene, camera);
+        raf = requestAnimationFrame(frame);
+      };
+      const run = () => { cancelAnimationFrame(raf); if (visible && !document.hidden) raf = requestAnimationFrame(frame); };
+      run();
+      document.addEventListener("visibilitychange", run);
+      if ("IntersectionObserver" in window) new IntersectionObserver((e) => { visible = e[0].isIntersecting; run(); }).observe(mount);
+    } catch (err) { /* no WebGL: the flat dark hero is the fallback */ }
   }
 
   /* staggered reveal; without the observer (or with reduced motion) everything just shows */
