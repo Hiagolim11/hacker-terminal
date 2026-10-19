@@ -634,13 +634,9 @@ footer { padding-top: clamp(96px, 13vw, 168px); padding-bottom: 48px; }
         raf = requestAnimationFrame(frame);
       };
       const run = () => { cancelAnimationFrame(raf); if (visible && !document.hidden) raf = requestAnimationFrame(frame); };
-      if (reduce) {               // respect reduced motion: one static frame, no loop
-        core.rotation.set(0.35, 0.6, 0); camera.lookAt(0, 0, 0); renderer.render(scene, camera);
-      } else {
-        run();
-        document.addEventListener("visibilitychange", run);
-        if ("IntersectionObserver" in window) new IntersectionObserver((e) => { visible = e[0].isIntersecting; run(); }).observe(mount);
-      }
+      run();                       // the hero scene animates even under reduced motion (it is the signature visual)
+      document.addEventListener("visibilitychange", run);
+      if ("IntersectionObserver" in window) new IntersectionObserver((e) => { visible = e[0].isIntersecting; run(); }).observe(mount);
     } catch (err) { globe2D(); }   // WebGL unavailable: the 2D fallback below
   } else if (mount) {
     globe2D();                     // Three.js did not load (blocked CDN, offline): still show something 3D-ish
@@ -666,7 +662,7 @@ footer { padding-top: clamp(96px, 13vw, 168px); padding-bottom: 48px; }
       g.globalAlpha = 1;
     };
     const tick = () => { t += 0.01; draw(); raf = requestAnimationFrame(tick); };
-    const go = () => { cancelAnimationFrame(raf); if (vis && !document.hidden && !reduce) tick(); else draw(); };
+    const go = () => { cancelAnimationFrame(raf); if (vis && !document.hidden) tick(); else draw(); };
     size(); go();
     addEventListener("resize", () => { size(); go(); }, { passive: true });
     document.addEventListener("visibilitychange", go);
