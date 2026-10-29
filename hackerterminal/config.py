@@ -68,6 +68,7 @@ class Preferences:
     sound: bool = False
     scrollback_lines: int = DEFAULT_SCROLLBACK
     panel_visible: bool = False
+    header_visible: bool = True
     restore_session: bool = True
     cursor_shape: str = "block"
     cursor_blink: str = "system"
@@ -158,6 +159,7 @@ class ConfigStore:
                 sound=self._boolean(section, "sound", False),
                 scrollback_lines=self._integer(section, "scrollback_lines", DEFAULT_SCROLLBACK),
                 panel_visible=self._boolean(section, "panel_visible", False),
+                header_visible=self._boolean(section, "header_visible", True),
                 restore_session=self._boolean(section, "restore_session", True),
                 cursor_shape=section.get("cursor_shape", "block"),
                 cursor_blink=section.get("cursor_blink", "system"),
@@ -210,6 +212,7 @@ class ConfigStore:
             "sound": str(preferences.sound).lower(),
             "scrollback_lines": str(preferences.scrollback_lines),
             "panel_visible": str(preferences.panel_visible).lower(),
+            "header_visible": str(preferences.header_visible).lower(),
             "restore_session": str(preferences.restore_session).lower(),
             "cursor_shape": preferences.cursor_shape,
             "cursor_blink": preferences.cursor_blink,

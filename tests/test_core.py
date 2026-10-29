@@ -1812,3 +1812,6 @@ class SystemMonitorTests(unittest.TestCase):
             loaded = store.load()
             self.assertTrue(loaded.monitor)
             self.assertEqual(loaded.monitor_items, "cpu,ram,gpu")  # known items, in display order
+            self.assertTrue(store.load().header_visible)  # the title bar shows by default
+            self.assertTrue(store.save(Preferences(header_visible=False)))
+            self.assertFalse(store.load().header_visible)

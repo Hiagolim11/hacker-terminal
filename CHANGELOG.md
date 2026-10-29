@@ -4,6 +4,8 @@ Este projeto segue [Semantic Versioning](https://semver.org/).
 
 ## 0.22.0
 
+- **Ocultar a barra de título** (a do topo com fechar, minimizar e maximizar): `Ctrl+Shift+J` mostra ou esconde, e há um interruptor em *Preferências → Geral → Barra de título*. Esconder também oculta os botões do app no cabeçalho; o estado é salvo.
+
 - **Monitor de recursos**, opcional (*Preferências → Geral → Monitor de recursos*):
   - a **barra de status** ganha um resumo (`CPU 12% · 2,4 GHz · 50 °C   RAM 3,1/7,7 GB   GPU 300 MHz`), com os itens que você escolher; fica vermelho só acima de 85 °C ou de 90% de memória, e um clique abre os detalhes;
   - o **painel lateral** ganha a seção *Sistema*: uso, clock e temperatura da CPU com uma barra por núcleo, memória e swap, e GPU, cada um com um gráfico do último minuto nas cores do tema.

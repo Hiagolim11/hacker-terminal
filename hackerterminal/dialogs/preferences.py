@@ -109,6 +109,7 @@ class PreferencesDialog(Gtk.Dialog):
         self.profile_ids: list[str] = []
         self.refresh_profiles(preferences.profile)
         self.panel = Gtk.Switch(active=preferences.panel_visible)
+        self.header_visible = Gtk.Switch(active=preferences.header_visible)
         self.restore_session = Gtk.Switch(active=preferences.restore_session)
         self.shell = Gtk.Entry(text=preferences.shell)
         self.shell.set_placeholder_text("Automático ($SHELL, zsh ou bash)")
@@ -138,6 +139,10 @@ class PreferencesDialog(Gtk.Dialog):
         self.shell_status = general.hint("", column=1, width=1)
         general.field("Restaurar sessão", self.restore_session)
         general.field("Painel lateral", self.panel)
+        general.field(
+            "Barra de título", self.header_visible,
+            "A barra do topo com os botões de fechar, minimizar e maximizar. Ocultar também esconde os botões do app; Ctrl+Shift+J mostra de novo.",
+        )
         general.heading("Monitor de recursos")
         self.monitor = Gtk.Switch(active=preferences.monitor)
         general.field(
@@ -816,6 +821,7 @@ class PreferencesDialog(Gtk.Dialog):
         target.key_volume = int(self.key_volume.get_value())
         target.key_release = self.key_release.get_active()
         target.panel_visible = self.panel.get_active()
+        target.header_visible = self.header_visible.get_active()
         target.monitor = self.monitor.get_active()
         target.monitor_items = ",".join(key for key, check in self.monitor_items.items() if check.get_active())
         target.restore_session = self.restore_session.get_active()

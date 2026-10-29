@@ -900,6 +900,16 @@ def main() -> int:
             window.preferences_changed()
             if service.running or window.monitor_status.get_visible() or window.action_panel.monitor_section.get_visible():
                 raise AssertionError("turning the monitor off left it running or on screen")
+
+            # Hiding the title bar hides the header and persists; toggling brings it back.
+            if not window.header.get_visible():
+                raise AssertionError("the title bar was not visible to begin with")
+            window.toggle_header()
+            if window.header.get_visible() or window.preferences.header_visible:
+                raise AssertionError("toggle_header did not hide the title bar")
+            window.toggle_header()
+            if not window.header.get_visible() or not window.preferences.header_visible:
+                raise AssertionError("toggle_header did not bring the title bar back")
             if not all(button.get_visible() for button in window.action_panel.action_buttons):
                 raise AssertionError("sidebar actions are not visible")
             # Opened from hidden (the default), the panel must show its actions on screen,

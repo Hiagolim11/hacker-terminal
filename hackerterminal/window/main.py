@@ -155,6 +155,7 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         # and styled once, with the terminal already in place.
         self.open_first_tabs()
         self.show_all()
+        self.apply_header_visibility()
         self.apply_monitor()
         self.status_source_id = GLib.timeout_add_seconds(3, self.refresh_status)
         self.command_source_id = 0
@@ -232,6 +233,7 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
             "search": self.search_active,
             "command_palette": self.show_command_palette,
             "toggle_panel": self.toggle_panel,
+            "toggle_header": self.toggle_header,
             "preferences": self.show_preferences,
             "zoom_in": on_terminal("zoom", 1),
             "zoom_out": on_terminal("zoom", -1),
@@ -248,6 +250,14 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         count = self.notebook.get_n_pages()
         if count:
             self.notebook.set_current_page((self.notebook.get_current_page() + delta) % count)
+
+    def apply_header_visibility(self) -> None:
+        if getattr(self, "header", None) is not None:
+            self.header.set_visible(self.preferences.header_visible)
+
+    def toggle_header(self) -> None:
+        self.preferences.header_visible = not self.preferences.header_visible
+        self.preferences_changed()
 
     def toggle_fullscreen(self) -> None:
         gdk_window = self.get_window()
@@ -622,6 +632,7 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
             ("Fechar painel ativo", "Terminal", self.close_active_pane),
             ("Pesquisar no histórico", "Terminal", self.search_active),
             ("Mostrar ou ocultar ações", "Interface", self.toggle_panel),
+            ("Mostrar ou ocultar a barra de título", "Interface", self.toggle_header),
             ("Preferências", "Interface", self.show_preferences),
             ("Editar ações rápidas", "Interface", self.show_action_editor),
             ("Salvar configurações atuais como perfil", "Perfil", self.save_profile_from_current),
@@ -719,6 +730,7 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
             terminal.apply_preferences(self.active_theme)
         if self.action_panel is not None:
             self.apply_panel_visibility()
+        self.apply_header_visibility()
         self.apply_monitor()
         self.update_status()
         application = self.get_application()

@@ -285,7 +285,7 @@ Estes são os padrões — **todos podem ser alterados** em *Preferências → A
 | `Ctrl+Shift+↑` / `↓` | Comando anterior / seguinte | | `Ctrl+Shift+L` | Copiar saída do último comando |
 | `Ctrl+Shift+I` | Digitar em todos os painéis | | `Ctrl+Shift+S` | Conexões SSH |
 | `Ctrl+Shift+R` | Renomear painel | | `F12` (global, opcional) | Terminal suspenso |
-| `Ctrl+Shift+H` | Histórico de comandos | | | |
+| `Ctrl+Shift+H` | Histórico de comandos | | `Ctrl+Shift+J` | Mostrar/ocultar barra de título |
 
 Para listar os atalhos em uso (incluindo os seus):
 
