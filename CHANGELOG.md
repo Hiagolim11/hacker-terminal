@@ -4,6 +4,8 @@ Este projeto segue [Semantic Versioning](https://semver.org/).
 
 ## 0.22.0
 
+- **Fala para texto** (botão 🎤 no cabeçalho): abre um diálogo que transcreve com o Whisper large-v3 **local** — grava 10 s do microfone ou abre um arquivo de áudio, mostra o texto e copia. As dependências são opcionais (`pip install -r requirements-speech.txt`: faster-whisper, sounddevice, numpy); o primeiro uso baixa o modelo. O reconhecedor roda isolado num subprocesso, sem travar a interface.
+
 - **Ocultar a barra de título** (a do topo com fechar, minimizar e maximizar): `Ctrl+Shift+J` mostra ou esconde, e há um interruptor em *Preferências → Geral → Barra de título*. Esconder também oculta os botões do app no cabeçalho; o estado é salvo.
 
 - **Monitor de recursos**, opcional (*Preferências → Geral → Monitor de recursos*):

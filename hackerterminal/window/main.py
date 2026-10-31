@@ -170,6 +170,9 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         start.get_style_context().add_class("header-group")
         for icon_name, fallback, tooltip, action in HEADER_ACTIONS:
             start.pack_start(self.make_header_button(icon_name, fallback, tooltip, action), False, False, 0)
+        speech = header_button("audio-input-microphone-symbolic", "🎤", "Fala para texto")
+        speech.connect("clicked", self.show_speech)
+        start.pack_start(speech, False, False, 0)
         self.header.pack_start(start)
         end = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
         end.get_style_context().add_class("header-group")
@@ -177,6 +180,16 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
             end.pack_end(self.make_header_button(icon_name, fallback, tooltip, action), False, False, 0)
         self.header.pack_end(end)
         return self.header
+
+    def show_speech(self, *_):
+        from ..dialogs.speech import SpeechDialog
+        dialog = getattr(self, "speech_dialog", None)
+        if dialog is not None:
+            dialog.present()
+            return
+        self.speech_dialog = SpeechDialog(self)
+        self.speech_dialog.set_destroy_with_parent(True)
+        self.speech_dialog.connect("destroy", lambda *_: setattr(self, "speech_dialog", None))
 
     def make_header_button(self, icon_name: str, fallback: str, tooltip: str, action: str) -> Gtk.Button:
         button = header_button(icon_name, fallback, tooltip)
