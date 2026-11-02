@@ -46,6 +46,7 @@ SHORTCUT_ACTIONS = (
     ShortcutAction("zoom_reset", "Tamanho padrão da fonte", "<Primary>0;<Primary>KP_0"),
     ShortcutAction("toggle_header", "Mostrar ou ocultar a barra de título", "<Primary><Shift>j"),
     ShortcutAction("dictate", "Ditar: fala para texto no terminal", "<Primary><Shift>m"),
+    ShortcutAction("shortcuts_help", "Mostrar os atalhos", "F1"),
     ShortcutAction("fullscreen", "Tela cheia", "F11"),
 )
 SHORTCUT_IDS = tuple(action.identifier for action in SHORTCUT_ACTIONS)

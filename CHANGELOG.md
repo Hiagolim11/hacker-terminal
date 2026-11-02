@@ -4,6 +4,12 @@ Este projeto segue [Semantic Versioning](https://semver.org/).
 
 ## 0.22.0
 
+- **Usabilidade**:
+  - **Busca na saída do terminal** (`Ctrl+Shift+F`): procura na rolagem do painel ativo, com navegação entre ocorrências.
+  - **Links e caminhos clicáveis**: `Ctrl+clique` abre URLs no navegador e arquivos no visualizador; o botão direito traz copiar, colar e pesquisar.
+  - **Abas mais ágeis**: `Alt+1`…`8` vão direto para a aba, `Alt+9` para a última; arraste para reordenar; o botão direito na aba abre um menu (nova aba, fechar, fechar as outras).
+  - **Folha de atalhos** (`F1`): uma janela lista todos os atalhos em vigor, já com os que você personalizou.
+
 - **Novo tema "Vidro (macOS)"**: visual claro e moderno inspirado no macOS, com cores de sistema (azul `#007aff`) e sem efeitos CRT. Para o efeito de vidro, reduza a opacidade da janela em *Preferências* (ex.: ~85%); o desfoque atrás depende de um compositor que o suporte.
 
 - **Ditar: fala para texto no terminal** (`Ctrl+Shift+M`, ou o botão 🎤): um toque grava alguns segundos do microfone (com contagem na barra de status) e para sozinho — ou pressione de novo para parar antes. O que você falou é transcrito por um Whisper **local** e **escrito no painel ativo**, sem Enter, para você revisar. Sem caixa de diálogo. As dependências (faster-whisper, sounddevice, numpy) são **verificadas e instaladas sozinhas no primeiro uso, em segundo plano** — nada de `pip` manual e a interface não trava. Modelo pequeno e rápido por padrão (`HT_SPEECH_MODEL` troca; `HT_SPEECH_SECONDS` muda a duração); o reconhecedor roda isolado num subprocesso.

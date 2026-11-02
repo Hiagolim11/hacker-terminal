@@ -192,6 +192,47 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
             controller = self.speech_controller = SpeechController(self)
         controller.toggle()
 
+    def show_shortcuts_help(self) -> None:
+        existing = getattr(self, "shortcuts_help", None)
+        if existing is not None:
+            existing.present()
+            return
+        from ..dialogs.shortcuts_help import ShortcutsHelp
+        self.shortcuts_help = ShortcutsHelp(self, dict(self.shortcuts.bindings))
+        self.shortcuts_help.connect("destroy", lambda *_: setattr(self, "shortcuts_help", None))
+
+    def add_tab_menu(self, tab_box: Gtk.Widget, frame: Gtk.Frame) -> Gtk.Widget:
+        """Wrap a tab label so a right-click offers tab actions."""
+        event_box = Gtk.EventBox()
+        event_box.add(tab_box)
+        event_box.show_all()
+        event_box.connect("button-press-event", lambda _w, event: self.on_tab_button_press(event, frame))
+        return event_box
+
+    def on_tab_button_press(self, event, frame: Gtk.Frame) -> bool:
+        if event.button != 3:
+            return False
+        menu = Gtk.Menu()
+        items = (
+            ("Nova aba", lambda *_: self.new_tab()),
+            ("Fechar aba", lambda *_: self.close_page(frame)),
+            ("Fechar as outras abas", lambda *_: self.close_other_tabs(frame)),
+        )
+        for text, handler in items:
+            item = Gtk.MenuItem(label=text)
+            item.connect("activate", handler)
+            menu.append(item)
+        menu.show_all()
+        menu.popup_at_pointer(event)
+        return True
+
+    def close_other_tabs(self, keep: Gtk.Frame | None = None) -> None:
+        keep = keep or self.active_frame()
+        frames = [self.notebook.get_nth_page(index) for index in range(self.notebook.get_n_pages())]
+        for frame in frames:
+            if frame is not None and frame is not keep:
+                self.close_page(frame)
+
     def make_header_button(self, icon_name: str, fallback: str, tooltip: str, action: str) -> Gtk.Button:
         button = header_button(icon_name, fallback, tooltip)
         button.connect("clicked", lambda _button, name=action: self.run_shortcut_action(name))
@@ -249,6 +290,7 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
             "toggle_panel": self.toggle_panel,
             "toggle_header": self.toggle_header,
             "dictate": self.dictate,
+            "shortcuts_help": self.show_shortcuts_help,
             "preferences": self.show_preferences,
             "zoom_in": on_terminal("zoom", 1),
             "zoom_out": on_terminal("zoom", -1),
@@ -455,6 +497,7 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         self.page_panes[frame] = [pane]
         self.active_panes[frame] = pane
         tab_box, label = self.make_tab_label("Terminal", None, lambda: self.close_page(frame))
+        tab_box = self.add_tab_menu(tab_box, frame)
         page = self.notebook.append_page(frame, tab_box)
         self.notebook.set_tab_reorderable(frame, True)
         self.tab_labels[pane] = label
@@ -656,10 +699,12 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
                 lambda: self.split_active(Gtk.Orientation.VERTICAL),
             ),
             ("Fechar painel ativo", "Terminal", self.close_active_pane),
-            ("Pesquisar no histórico", "Terminal", self.search_active),
+            ("Pesquisar no terminal", "Terminal", self.search_active),
+            ("Fechar as outras abas", "Terminal", self.close_other_tabs),
             ("Mostrar ou ocultar ações", "Interface", self.toggle_panel),
             ("Mostrar ou ocultar a barra de título", "Interface", self.toggle_header),
             ("Ditar: fala para texto no terminal", "Interface", self.dictate),
+            ("Mostrar os atalhos", "Interface", self.show_shortcuts_help),
             ("Preferências", "Interface", self.show_preferences),
             ("Editar ações rápidas", "Interface", self.show_action_editor),
             ("Salvar configurações atuais como perfil", "Perfil", self.save_profile_from_current),
@@ -895,8 +940,25 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         return SessionState(width, height, self.notebook.get_current_page(), tuple(tabs))
 
     def on_window_key_press(self, _window, event) -> bool:
+        if self.jump_to_tab_by_number(event):
+            return True
         identifier = self.shortcuts.match(event.keyval, event.state)
         if identifier is None:
             return False
         self.run_shortcut_action(identifier)
         return True
+
+    def jump_to_tab_by_number(self, event) -> bool:
+        """Alt+1…8 jumps to that tab; Alt+9 jumps to the last one."""
+        held = event.state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.MOD1_MASK
+                              | Gdk.ModifierType.SHIFT_MASK | Gdk.ModifierType.SUPER_MASK)
+        if held != Gdk.ModifierType.MOD1_MASK or not Gdk.KEY_1 <= event.keyval <= Gdk.KEY_9:
+            return False
+        count = self.notebook.get_n_pages()
+        if count == 0:
+            return False
+        target = count - 1 if event.keyval == Gdk.KEY_9 else event.keyval - Gdk.KEY_1
+        if 0 <= target < count:
+            self.notebook.set_current_page(target)
+            return True
+        return False
