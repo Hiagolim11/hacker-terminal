@@ -1,36 +1,51 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
-from hackerterminal.runtime import Gtk
-from hackerterminal.dialogs.speech import SpeechDialog
+
+from hackerterminal.runtime import GLib, Gtk
+from hackerterminal.dialogs.speech import SpeechController
 
 
-class SpeechGuiTests(unittest.TestCase):
-    def test_close_cancels_worker(self):
-        parent = Gtk.Window()
-        dialog = SpeechDialog(parent)
+def fake_window():
+    pane = SimpleNamespace(terminal=Mock())
+    return SimpleNamespace(status=Gtk.Label(), get_active_terminal=lambda: pane), pane
+
+
+class SpeechControllerTests(unittest.TestCase):
+    @patch.object(SpeechController, "have_deps", return_value=True)
+    def test_toggle_records_then_types_into_terminal(self, _deps):
+        window, pane = fake_window()
+        controller = SpeechController(window)
+        worker = Mock()
+        worker.poll.return_value = None  # still recording
+        with patch("hackerterminal.dialogs.speech.subprocess.Popen", return_value=worker):
+            controller.toggle()
+        self.assertEqual(controller.state, "recording")
+        GLib.source_remove(controller.timer)
+        controller.timer = 0
+
+        controller.output.seek(0)
+        controller.output.write(b'{"text": "ls -la"}')
+        worker.poll.return_value = 0  # finished transcribing
+        controller.toggle()  # second press: stop
+        self.assertFalse(controller.poll())
+        pane.terminal.feed_child.assert_called_once_with(b"ls -la")
+        self.assertEqual(controller.state, "idle")
+
+    @patch.object(SpeechController, "have_deps", return_value=True)
+    def test_cleanup_kills_worker(self, _deps):
+        window, _pane = fake_window()
+        controller = SpeechController(window)
         worker = Mock()
         worker.poll.return_value = None
-        with patch('hackerterminal.dialogs.speech.subprocess.Popen', return_value=worker):
-            dialog.start()
-        self.assertFalse(dialog.mic.get_sensitive())
-        dialog.destroy()
+        with patch("hackerterminal.dialogs.speech.subprocess.Popen", return_value=worker):
+            controller.toggle()
+        controller.cleanup()
         worker.kill.assert_called_once()
         worker.wait.assert_called_once()
-        self.assertIsNone(dialog.output)
-        parent.destroy()
+        self.assertIsNone(controller.output)
+        self.assertEqual(controller.state, "idle")
 
-    def test_result_and_retry(self):
-        parent = Gtk.Window()
-        dialog = SpeechDialog(parent)
-        worker = Mock()
-        worker.poll.return_value = 0
-        with patch('hackerterminal.dialogs.speech.subprocess.Popen', return_value=worker):
-            dialog.start('/tmp/audio.wav')
-        dialog.output.write(b'{"text":"teste"}')
-        from hackerterminal.runtime import GLib
-        GLib.source_remove(dialog.timer)
-        self.assertFalse(dialog.poll())
-        self.assertTrue(dialog.mic.get_sensitive())
-        self.assertEqual(dialog.text.get_buffer().get_char_count(), 5)
-        dialog.destroy()
-        parent.destroy()
+
+if __name__ == "__main__":
+    unittest.main()

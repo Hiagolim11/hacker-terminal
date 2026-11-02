@@ -170,8 +170,8 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         start.get_style_context().add_class("header-group")
         for icon_name, fallback, tooltip, action in HEADER_ACTIONS:
             start.pack_start(self.make_header_button(icon_name, fallback, tooltip, action), False, False, 0)
-        speech = header_button("audio-input-microphone-symbolic", "🎤", "Fala para texto")
-        speech.connect("clicked", self.show_speech)
+        speech = header_button("audio-input-microphone-symbolic", "🎤", "Ditar: fala para texto (Ctrl+Shift+M)")
+        speech.connect("clicked", lambda *_: self.dictate())
         start.pack_start(speech, False, False, 0)
         self.header.pack_start(start)
         end = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
@@ -181,15 +181,12 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         self.header.pack_end(end)
         return self.header
 
-    def show_speech(self, *_):
-        from ..dialogs.speech import SpeechDialog
-        dialog = getattr(self, "speech_dialog", None)
-        if dialog is not None:
-            dialog.present()
-            return
-        self.speech_dialog = SpeechDialog(self)
-        self.speech_dialog.set_destroy_with_parent(True)
-        self.speech_dialog.connect("destroy", lambda *_: setattr(self, "speech_dialog", None))
+    def dictate(self) -> None:
+        controller = getattr(self, "speech_controller", None)
+        if controller is None:
+            from ..dialogs.speech import SpeechController
+            controller = self.speech_controller = SpeechController(self)
+        controller.toggle()
 
     def make_header_button(self, icon_name: str, fallback: str, tooltip: str, action: str) -> Gtk.Button:
         button = header_button(icon_name, fallback, tooltip)
@@ -247,6 +244,7 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
             "command_palette": self.show_command_palette,
             "toggle_panel": self.toggle_panel,
             "toggle_header": self.toggle_header,
+            "dictate": self.dictate,
             "preferences": self.show_preferences,
             "zoom_in": on_terminal("zoom", 1),
             "zoom_out": on_terminal("zoom", -1),
@@ -646,6 +644,7 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
             ("Pesquisar no histórico", "Terminal", self.search_active),
             ("Mostrar ou ocultar ações", "Interface", self.toggle_panel),
             ("Mostrar ou ocultar a barra de título", "Interface", self.toggle_header),
+            ("Ditar: fala para texto no terminal", "Interface", self.dictate),
             ("Preferências", "Interface", self.show_preferences),
             ("Editar ações rápidas", "Interface", self.show_action_editor),
             ("Salvar configurações atuais como perfil", "Perfil", self.save_profile_from_current),
@@ -817,6 +816,9 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
 
     def on_window_destroy(self, _window) -> None:
         self.closing_window = True  # pending idle callbacks must not touch it
+        controller = getattr(self, "speech_controller", None)
+        if controller is not None:
+            controller.cleanup()
         context = GLib.MainContext.default()
         for attribute in ("status_source_id", "autosave_source_id", "command_source_id", "toast_source"):
             source = getattr(self, attribute, 0)

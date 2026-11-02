@@ -10,7 +10,7 @@ class SpeechTests(unittest.TestCase):
         model.transcribe.return_value = (iter([SimpleNamespace(text=' Olá '), SimpleNamespace(text=''), SimpleNamespace(text='mundo')]), None)
         factory = Mock(return_value=model)
         self.assertEqual(transcribe('audio.wav', factory), 'Olá mundo')
-        factory.assert_called_once_with('large-v3', device='cpu', compute_type='int8')
+        factory.assert_called_once_with('small', device='cpu', compute_type='int8')
         model.transcribe.assert_called_once_with('audio.wav', beam_size=5, vad_filter=True, condition_on_previous_text=False, task='transcribe')
 
     def test_silence(self):

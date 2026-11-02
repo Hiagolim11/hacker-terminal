@@ -4,7 +4,7 @@ Este projeto segue [Semantic Versioning](https://semver.org/).
 
 ## 0.22.0
 
-- **Fala para texto** (botão 🎤 no cabeçalho): abre um diálogo que transcreve com o Whisper large-v3 **local** — grava 10 s do microfone ou abre um arquivo de áudio, mostra o texto e copia. As dependências são opcionais (`pip install -r requirements-speech.txt`: faster-whisper, sounddevice, numpy); o primeiro uso baixa o modelo. O reconhecedor roda isolado num subprocesso, sem travar a interface.
+- **Ditar: fala para texto no terminal** (`Ctrl+Shift+M`, ou o botão 🎤): a primeira vez grava do microfone; a segunda para, transcreve com um Whisper **local** e **escreve o texto no painel ativo** — sem Enter, para você revisar. Sem caixa de diálogo; o andamento aparece na barra de status. As dependências (faster-whisper, sounddevice, numpy) são **instaladas sozinhas no primeiro uso** — nada de `pip` manual. Usa um modelo pequeno e rápido por padrão (`HT_SPEECH_MODEL` troca); o reconhecedor roda isolado num subprocesso, sem travar a interface.
 
 - **Ocultar a barra de título** (a do topo com fechar, minimizar e maximizar): `Ctrl+Shift+J` mostra ou esconde, e há um interruptor em *Preferências → Geral → Barra de título*. Esconder também oculta os botões do app no cabeçalho; o estado é salvo.
 
