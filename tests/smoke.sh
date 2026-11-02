@@ -27,7 +27,7 @@ bin/ht-open --help | grep -F "ht-open ARQUIVO" >/dev/null
 bash -n run.sh install.sh tests/smoke.sh packaging/build-deb.sh
 python3 hacker_terminal.py --help >/dev/null
 python3 hacker_terminal.py --version | grep -F "0.22.0" >/dev/null
-test "$(python3 hacker_terminal.py --list-themes | grep -c "	interno$")" -eq 22
+test "$(python3 hacker_terminal.py --list-themes | grep -c "	interno$")" -eq 23
 test "$(python3 hacker_terminal.py --list-profiles | wc -l)" -eq 4
 python3 -m unittest -v tests.test_core tests.test_regressions tests.test_speech
 

@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Hacker Terminal</title>
-<meta name="description" content="Terminal nativo para Linux que abre em menos de um segundo: 22 temas CRT e neon, som de 18 teclados mecânicos reais, monitor de recursos e um laboratório CTF para testar no navegador. Grátis e de código aberto.">
+<meta name="description" content="Terminal nativo para Linux que abre em menos de um segundo: 23 temas CRT e neon, som de 18 teclados mecânicos reais, monitor de recursos e um laboratório CTF para testar no navegador. Grátis e de código aberto.">
 <meta property="og:title" content="Hacker Terminal">
-<meta property="og:description" content="Terminal nativo para Linux: 22 temas, som de teclado mecânico, monitor de recursos e um CTF para experimentar no navegador.">
+<meta property="og:description" content="Terminal nativo para Linux: 23 temas, som de teclado mecânico, monitor de recursos e um CTF para experimentar no navegador.">
 <meta property="og:image" content="https://hiagolim11.github.io/hacker-terminal/screenshots/hero.png">
 <meta name="theme-color" content="#0a0d0b">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2339ff88'/%3E%3Cpath d='M9 11l6 5-6 5' fill='none' stroke='%23071109' stroke-width='3'/%3E%3Cpath d='M17 22h7' stroke='%23071109' stroke-width='3'/%3E%3C/svg%3E">
@@ -354,7 +354,7 @@ kbd { box-shadow: 0 0 10px rgba(57,255,136,0.12); }
   <section class="hero" aria-labelledby="hero-title">
     <div class="container">
       <h1 id="hero-title"><span class="ln"><span>Um terminal com</span></span><span class="ln"><span>cara própria.</span></span></h1>
-      <p class="lead hero-lead reveal">Nativo para Linux, abre em menos de um segundo. 22 temas CRT e neon, som de 18 teclados mecânicos reais e um monitor de recursos. Sem Electron, sem navegador, sem telemetria: teste agora mesmo, aqui embaixo.</p>
+      <p class="lead hero-lead reveal">Nativo para Linux, abre em menos de um segundo. 23 temas CRT e neon, som de 18 teclados mecânicos reais e um monitor de recursos. Sem Electron, sem navegador, sem telemetria: teste agora mesmo, aqui embaixo.</p>
       <div class="hero-actions reveal">
         <a class="btn" href="https://github.com/Hiagolim11/hacker-terminal/releases/latest">Baixar a versão 0.22.0</a>
         <a class="btn secondary" href="https://github.com/Hiagolim11/hacker-terminal">Ver o código</a>
@@ -513,7 +513,7 @@ kbd { box-shadow: 0 0 10px rgba(57,255,136,0.12); }
   <section id="temas" aria-labelledby="temas-title">
     <div class="container">
       <div class="head reveal">
-        <h2 id="temas-title">22 temas fáceis de ler.</h2>
+        <h2 id="temas-title">23 temas fáceis de ler.</h2>
         <p>Do minimalista ao fósforo de tubo CRT. Cada um passa no teste de contraste WCAG, e você ainda pode pôr uma imagem de fundo atrás do texto.</p>
       </div>
       <div class="themes-grid">
@@ -660,7 +660,7 @@ kbd { box-shadow: 0 0 10px rgba(57,255,136,0.12); }
     if (reduce || played) { el.remove(); return; }
     try { sessionStorage.setItem("ht-booted", "1"); } catch (e) {}
     const log = document.getElementById("boot-log");
-    const lines = ["hacker-terminal :: boot", "[ ok ] nucleo GTK/VTE carregado", "[ ok ] 22 temas  .  18 teclados reais", "[ ok ] monitor de recursos", "[ ok ] laboratorio CTF pronto", "> iniciando sessao..."];
+    const lines = ["hacker-terminal :: boot", "[ ok ] nucleo GTK/VTE carregado", "[ ok ] 23 temas  .  18 teclados reais", "[ ok ] monitor de recursos", "[ ok ] laboratorio CTF pronto", "> iniciando sessao..."];
     let li = 0, ci = 0, timer = 0;
     const finish = () => { el.classList.add("done"); setTimeout(() => el.remove(), 650); removeEventListener("keydown", skip); removeEventListener("pointerdown", skip); };
     const step = () => {
