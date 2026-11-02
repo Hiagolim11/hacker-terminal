@@ -52,6 +52,12 @@ class ViewerMixin:
         origin = self.viewers.pop(viewer, None)
         page = self.notebook.page_num(viewer)
         if page >= 0:
+            tab = self.notebook.get_tab_label(viewer)
+            if isinstance(tab, Gtk.Box):
+                label = next((child for child in tab.get_children() if isinstance(child, Gtk.Label)), None)
+                if label is not None:
+                    self.tab_status_widgets.pop(label, None)
+        if page >= 0:
             self.notebook.remove_page(page)
         viewer.destroy()
         frame = self.frame_for_pane(origin) if origin is not None else None

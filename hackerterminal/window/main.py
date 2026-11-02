@@ -115,6 +115,7 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         self.load_theme_css()
         self.closing_window = False
         self.tab_labels: dict[TerminalPane, Gtk.Label] = {}
+        self.tab_status_widgets: dict[Gtk.Label, tuple[Gtk.Spinner, Gtk.Label]] = {}
         self.page_panes: dict[Gtk.Frame, list[TerminalPane]] = {}
         self.active_panes: dict[Gtk.Frame, TerminalPane] = {}
         self.toolbar_buttons: list[Gtk.Widget] = []
@@ -124,12 +125,14 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         self.broadcast_frames: set[Gtk.Frame] = set()
         self.connection_store = ConnectionStore()
         self.history_store = HistoryStore()
+        self.session_coordinator = application.session_coordinator(session_store)
+        owns_session = not self.config.command and self.session_coordinator.register(self, self.snapshot_session)
         self.open_socket = (
             application.ensure_open_server() if hasattr(application, "ensure_open_server") else None
         )
         self.saved_session = (
             self.session_store.load()
-            if restore and self.preferences.restore_session and not self.config.command
+            if restore and self.preferences.restore_session and owns_session
             else None
         )
         if self.saved_session is not None:
@@ -470,6 +473,13 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         label.set_ellipsize(Pango.EllipsizeMode.END)
         label.set_max_width_chars(24)
         label.set_width_chars(18)
+        spinner = Gtk.Spinner()
+        spinner.set_size_request(12, 12)
+        spinner.set_no_show_all(True)
+        result = Gtk.Label()
+        result.set_no_show_all(True)
+        result.set_tooltip_text("Resultado do último comando")
+        self.tab_status_widgets[label] = (spinner, result)
         close_button = header_button("window-close-symbolic", "×", "Fechar aba")
         close_button.get_style_context().remove_class("header-action")
         close_button.set_relief(Gtk.ReliefStyle.NONE)
@@ -477,6 +487,8 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         close_button.get_style_context().add_class("tab-close")
         close_button.connect("clicked", lambda *_: on_close())
         tab_box.pack_start(label, True, True, 0)
+        tab_box.pack_start(spinner, False, False, 0)
+        tab_box.pack_start(result, False, False, 0)
         tab_box.pack_start(close_button, False, False, 0)
         tab_box.show_all()
         return tab_box, label
@@ -502,6 +514,8 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
             pane.extra_env[SOCKET_ENV] = str(self.open_socket)
         pane.on_output_action = self.on_output_action
         pane.on_command_done = self.on_shell_command_done
+        pane.on_command_started = self.on_shell_command_started
+        pane.on_command_cancelled = self.on_shell_command_cancelled
         return pane
 
     def active_frame(self) -> Gtk.Frame | None:
@@ -820,6 +834,7 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         controller = getattr(self, "speech_controller", None)
         if controller is not None:
             controller.cleanup()
+        self.session_coordinator.remove(self)
         context = GLib.MainContext.default()
         for attribute in ("status_source_id", "autosave_source_id", "command_source_id", "toast_source"):
             source = getattr(self, attribute, 0)
@@ -856,9 +871,13 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
         return False
 
     def save_session(self) -> None:
-        if self.config.command or not self.preferences.restore_session:
-            self.session_store.clear()
+        if self.config.command:
             return
+        self.session_coordinator.save()
+
+    def snapshot_session(self) -> SessionState | None:
+        if self.config.command or not self.preferences.restore_session or self.closing_window:
+            return None
         tabs: list[SessionTab] = []
         for page in range(self.notebook.get_n_pages()):
             frame = self.notebook.get_nth_page(page)
@@ -871,12 +890,9 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
             names = tuple(pane.custom_name for pane in order)
             tabs.append(SessionTab(directories, None, self.layout_of(frame.get_child(), order), names))
         if not tabs:
-            self.session_store.clear()
-            return
+            return None
         width, height = self.get_size()
-        self.session_store.save(
-            SessionState(width, height, self.notebook.get_current_page(), tuple(tabs))
-        )
+        return SessionState(width, height, self.notebook.get_current_page(), tuple(tabs))
 
     def on_window_key_press(self, _window, event) -> bool:
         identifier = self.shortcuts.match(event.keyval, event.state)

@@ -13,7 +13,7 @@ from .keysound import KeySoundEngine
 from .openserver import OpenServer
 from .profiles import ProfileManager
 from .runtime import GLib, Gio, Gtk
-from .session import SessionStore
+from .session import SessionCoordinator, SessionStore
 from .themes import ThemeManager
 from .window.main import HackerTerminal
 
@@ -60,6 +60,7 @@ class HackerTerminalApp(Gtk.Application):
         self.store = store
         self.action_store = action_store
         self.session_store = session_store
+        self.session_coordinators: dict[Path, SessionCoordinator] = {}
         self.theme_manager = theme_manager
         self.profile_manager = profile_manager
         self.css_provider = css_provider
@@ -81,13 +82,21 @@ class HackerTerminalApp(Gtk.Application):
                 return
 
     def on_quit_signal(self) -> bool:
+        # Snapshot every window before destroying any of them.
+        for coordinator in self.session_coordinators.values():
+            coordinator.save()
         for window in self.get_windows():
             if isinstance(window, HackerTerminal):
                 window.closing_window = True
-                window.save_session()
             window.destroy()
         self.quit()
         return False
+
+    def session_coordinator(self, store: SessionStore) -> SessionCoordinator:
+        key = store.path.absolute()
+        if key not in self.session_coordinators:
+            self.session_coordinators[key] = SessionCoordinator(store)
+        return self.session_coordinators[key]
 
     def ensure_open_server(self) -> Path | None:
         """One ht-open socket per process, shared by its windows."""
@@ -167,6 +176,8 @@ class HackerTerminalApp(Gtk.Application):
         return window
 
     def do_shutdown(self) -> None:
+        for coordinator in self.session_coordinators.values():
+            coordinator.close()
         if self.open_server is not None:
             self.open_server.stop()
         if KeySoundEngine._instance is not None:

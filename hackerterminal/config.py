@@ -6,11 +6,11 @@ import configparser
 import io
 import logging
 import os
-import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .constants import APP_NAME, DEFAULT_FONT_SIZE, DEFAULT_SCROLLBACK, DEFAULT_THEME
+from .storage import write_text
 
 LOGGER = logging.getLogger(__name__)
 
@@ -39,22 +39,11 @@ def default_config_path() -> Path:
 
 def atomic_write_text(path: Path, text: str, prefix: str) -> bool:
     """Write ``text`` with mode 0600 through a same-directory rename."""
-    temporary: Path | None = None
     try:
-        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        descriptor, name = tempfile.mkstemp(prefix=prefix, dir=path.parent, text=True)
-        temporary = Path(name)
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(text)
-            handle.flush()
-            os.fsync(handle.fileno())
-        temporary.chmod(0o600)
-        temporary.replace(path)
+        write_text(path, text, prefix)
         return True
     except OSError as error:
         LOGGER.warning("não foi possível gravar %s: %s", path, error)
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
         return False
 
 
@@ -72,6 +61,7 @@ class Preferences:
     restore_session: bool = True
     cursor_shape: str = "block"
     cursor_blink: str = "system"
+    cursor_pulse: bool = False
     opacity: int = 100
     bold_is_bright: bool = False
     copy_on_select: bool = False
@@ -163,6 +153,7 @@ class ConfigStore:
                 restore_session=self._boolean(section, "restore_session", True),
                 cursor_shape=section.get("cursor_shape", "block"),
                 cursor_blink=section.get("cursor_blink", "system"),
+                cursor_pulse=self._boolean(section, "cursor_pulse", False),
                 opacity=self._integer(section, "opacity", 100),
                 bold_is_bright=self._boolean(section, "bold_is_bright", False),
                 copy_on_select=self._boolean(section, "copy_on_select", False),
@@ -216,6 +207,7 @@ class ConfigStore:
             "restore_session": str(preferences.restore_session).lower(),
             "cursor_shape": preferences.cursor_shape,
             "cursor_blink": preferences.cursor_blink,
+            "cursor_pulse": str(preferences.cursor_pulse).lower(),
             "opacity": str(preferences.opacity),
             "bold_is_bright": str(preferences.bold_is_bright).lower(),
             "copy_on_select": str(preferences.copy_on_select).lower(),

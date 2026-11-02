@@ -17,6 +17,8 @@ from .runtime import Gdk, Gio, GLib, Gtk, Pango  # noqa: E402
 
 LOGGER = logging.getLogger(__name__)
 MAX_DECODE_SIDE = 4096       # huge photos are decoded downscaled
+MAX_SOURCE_PIXELS = 64_000_000  # some native loaders still allocate before scaling
+MAX_ANIMATION_BYTES = 16 * 1024 * 1024
 MAX_RENDER_SIDE = 12_000     # cap for zoomed pixbufs
 ROWS_PER_IDLE = 400          # table rows inserted per main-loop turn
 ZOOM_STEPS = (0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0)
@@ -51,6 +53,7 @@ class FileViewer(Gtk.Box):
         self.on_close = on_close
         self.alive = True
         self.generation = 0
+        self.loading = False
         self.zoom = 1.0
         self.fit = True
         self.source: GdkPixbuf.Pixbuf | None = None
@@ -108,11 +111,18 @@ class FileViewer(Gtk.Box):
     # ------------------------------------------------------------- loading
 
     def load(self) -> None:
+        if not self.alive:
+            return
         self.generation += 1
-        generation = self.generation
         self._cancel_fill()
         self.stack.set_visible_child_name("loading")
         self.info.set_text("carregando…")
+        if not self.loading:
+            self._start_load()
+
+    def _start_load(self) -> None:
+        self.loading = True
+        generation = self.generation
         threading.Thread(target=self._load_worker, args=(generation,), name="viewer-load", daemon=True).start()
 
     def _load_worker(self, generation: int) -> None:
@@ -135,19 +145,33 @@ class FileViewer(Gtk.Box):
         info = GdkPixbuf.Pixbuf.get_file_info(str(self.path))
         if info is None or info[0] is None:
             raise DocumentError("formato de imagem não reconhecido")
-        _format, width, height = info
+        image_format, width, height = info
+        if width <= 0 or height <= 0 or width * height > MAX_SOURCE_PIXELS:
+            raise DocumentError("imagem grande demais para a prévia (máximo 64 megapixels)")
+        # GIF/ANI can expand to many full-sized frames. Reject oversized
+        # animations before creating the animation decoder.
+        if image_format.get_name() in ("gif", "ani"):
+            if max(width, height) > MAX_DECODE_SIDE or self.path.stat().st_size > MAX_ANIMATION_BYTES:
+                raise DocumentError("animação grande demais para a prévia (máximo 4096 px e 16 MB)")
+        if max(width, height) > MAX_DECODE_SIDE:
+            # Decide from metadata, before new_from_file allocates the
+            # original bitmap. Large images are a bounded static preview.
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(self.path), MAX_DECODE_SIDE, MAX_DECODE_SIDE, True)
+            return ("still", pixbuf.apply_embedded_orientation() or pixbuf, width, height)
         animation = GdkPixbuf.PixbufAnimation.new_from_file(str(self.path))
         if not animation.is_static_image():
             return ("animation", animation, width, height)
-        if max(width, height) > MAX_DECODE_SIDE:
-            pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(self.path), MAX_DECODE_SIDE, MAX_DECODE_SIDE, True)
-        else:
-            pixbuf = animation.get_static_image()
+        pixbuf = animation.get_static_image()
         # Respect the camera's orientation tag.
         return ("still", pixbuf.apply_embedded_orientation() or pixbuf, width, height)
 
     def _loaded(self, generation: int, result, error: str | None) -> bool:
-        if not self.alive or generation != self.generation:
+        self.loading = False
+        if not self.alive:
+            return False
+        if generation != self.generation:
+            # Keep just one pending request, always for the latest reload.
+            self._start_load()
             return False
         if error is not None:
             self.error.set_text(f"Não foi possível mostrar {self.path.name}\n\n{error}")

@@ -69,6 +69,39 @@ class CommandsMixin:
             application.send_notification(f"command-{pane.pane_id}", notification)
         LOGGER.info("comando concluído: %s (%s)", name, format_duration(duration))
 
+    def set_tab_command_state(self, pane: TerminalPane, state: str, status: int | None = None) -> None:
+        label = self.tab_labels.get(pane)
+        widgets = self.tab_status_widgets.get(label) if label is not None else None
+        if widgets is None or label.get_parent() is None:
+            return
+        spinner, result = widgets
+        context = label.get_parent().get_style_context()
+        for class_name in ("tab-success", "tab-error", "tab-running"):
+            context.remove_class(class_name)
+        if state == "running":
+            result.hide()
+            spinner.show()
+            spinner.start()
+            context.add_class("tab-running")
+            return
+        spinner.stop()
+        spinner.hide()
+        if state == "done":
+            result.hide()
+            return
+        result.set_text("✓" if status == 0 else "!")
+        result.set_tooltip_text(
+            "Último comando: sucesso" if status == 0 else f"Último comando: falhou (código {status})"
+        )
+        result.show()
+        context.add_class("tab-success" if status == 0 else "tab-error")
+
+    def on_shell_command_started(self, pane: TerminalPane) -> None:
+        self.set_tab_command_state(pane, "running")
+
+    def on_shell_command_cancelled(self, pane: TerminalPane) -> None:
+        self.set_tab_command_state(pane, "done")
+
     def focus_pane(self, pane_id: str) -> bool:
         pane = self.pane_by_id(pane_id)
         if pane is None:
@@ -105,6 +138,7 @@ class CommandsMixin:
 
     def on_shell_command_done(self, pane: TerminalPane, mark) -> None:
         """Exact result reported by the shell hooks (replaces /proc polling)."""
+        self.set_tab_command_state(pane, "done" if mark.command == "" else "finished", mark.exit_status)
         if pane is self.get_active_terminal():
             self.update_status()
         if self.preferences.command_history:

@@ -10,6 +10,7 @@ import tempfile
 import time
 import traceback
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -30,6 +31,15 @@ from hackerterminal.window.main import HackerTerminal
 
 
 def main() -> int:
+    # The real keyring has its own end-to-end suite (ssh_access.py). Never
+    # block this GUI suite on a desktop password prompt or user keyring.
+    from hackerterminal import passwords
+    with patch.multiple(passwords, available=lambda: False, has_password=lambda _id: False,
+                        lookup=lambda _id: None, forget=lambda _id: True):
+        return check_gui()
+
+
+def check_gui() -> int:
     temporary = tempfile.TemporaryDirectory()
     root = Path(temporary.name)
     preferences = Preferences(effects=False, sound=False)
@@ -643,6 +653,10 @@ def main() -> int:
                     raise AssertionError("finished command was not reported with its duration")
                 window.on_command_finished(watched, "make", 30.0)
                 box = window.tab_labels[watched].get_parent()
+                window.on_shell_command_started(watched)
+                spinner, result = window.tab_status_widgets[window.tab_labels[watched]]
+                if not spinner.get_property("active") or not spinner.get_visible():
+                    raise AssertionError("running command did not animate its tab indicator")
                 if not window.is_active() and not box.get_style_context().has_class("tab-done"):
                     raise AssertionError("finished command did not mark the tab")
                 if not window.is_active() and (len(sent) != 1 or not sent[0][0].endswith(watched.pane_id)):
@@ -652,11 +666,15 @@ def main() -> int:
                 failed = PromptMark(5, 2, 1, "make test", 2, 42.0, True)
                 sent.clear()
                 window.on_shell_command_done(watched, failed)
+                if spinner.get_property("active") or result.get_text() != "!":
+                    raise AssertionError("failed command did not leave an error indicator")
                 if not window.is_active() and not sent:
                     raise AssertionError("shell-reported command did not notify")
                 fast = PromptMark(6, 2, 1, "ls", 0, 0.2, True)
                 count = len(sent)
                 window.on_shell_command_done(watched, fast)
+                if result.get_text() != "✓":
+                    raise AssertionError("successful command did not leave a success indicator")
                 if len(sent) != count:
                     raise AssertionError("a quick command triggered a notification")
                 if not window.focus_pane(watched.pane_id) or window.get_active_terminal() is not watched:

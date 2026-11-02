@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
-import os
-import tempfile
+import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
-from .config import clamp, default_config_path
+from .config import atomic_write_text, clamp, default_config_path
+from .storage import exclusive_lock
+
+LOGGER = logging.getLogger(__name__)
 
 
 MAX_PANES_PER_TAB = 4
@@ -177,24 +180,62 @@ class SessionStore:
             "active_tab": max(0, state.active_tab),
             "tabs": tabs,
         }
-        temporary: Path | None = None
-        try:
-            self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            descriptor, name = tempfile.mkstemp(prefix=".session.", dir=self.path.parent, text=True)
-            temporary = Path(name)
-            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-                json.dump(payload, handle, ensure_ascii=False, indent=2)
-                handle.write("\n")
-            temporary.chmod(0o600)
-            temporary.replace(self.path)
-            return True
-        except OSError:
-            if temporary is not None:
-                temporary.unlink(missing_ok=True)
-            return False
+        return atomic_write_text(self.path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n", ".session.")
 
     def clear(self) -> None:
         try:
             self.path.unlink(missing_ok=True)
         except OSError:
             pass
+
+
+class SessionCoordinator:
+    """One writer per session file; combine normal windows in opening order.
+
+    Version 3 remains readable: the saved tabs reopen in a single window.
+    Concurrent separate processes do not overwrite the owning process's
+    session. Drop-down windows use a different store and therefore lock.
+    """
+
+    def __init__(self, store: SessionStore) -> None:
+        self.store = store
+        self.windows: dict[object, Callable[[], SessionState | None]] = {}
+        self._lock = None
+        self._attempted = False
+
+    def register(self, key: object, snapshot: Callable[[], SessionState | None]) -> bool:
+        if not self._attempted:
+            self._attempted = True
+            try:
+                self._lock = exclusive_lock(self.store.path.with_suffix(self.store.path.suffix + ".lock"), blocking=False)
+            except BlockingIOError:
+                LOGGER.info("sessão já gerenciada por outro processo: %s", self.store.path)
+            except OSError as error:
+                LOGGER.warning("não foi possível reservar a sessão %s: %s", self.store.path, error)
+        if self._lock is None:
+            return False
+        self.windows[key] = snapshot
+        return True
+
+    def save(self) -> bool:
+        if self._lock is None:
+            return False
+        states = [state for snapshot in self.windows.values() if (state := snapshot()) is not None]
+        if not states:
+            self.store.clear()
+            return True
+        first = states[0]
+        tabs = tuple(tab for state in states for tab in state.tabs)
+        return self.store.save(SessionState(first.width, first.height, first.active_tab, tabs))
+
+    def remove(self, key: object, *, save: bool = False) -> None:
+        if key in self.windows:
+            del self.windows[key]
+            if save:
+                self.save()
+
+    def close(self) -> None:
+        self.windows.clear()
+        if self._lock is not None:
+            self._lock.close()
+            self._lock = None

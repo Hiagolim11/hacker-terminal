@@ -17,6 +17,7 @@ from pathlib import Path
 
 from .config import atomic_write_text, state_home
 from .constants import APP_NAME
+from .storage import exclusive_lock
 
 LOGGER = logging.getLogger(__name__)
 MAX_ENTRIES = 5000
@@ -65,6 +66,7 @@ def parse_line(line: str) -> HistoryEntry | None:
 class HistoryStore:
     def __init__(self, path: Path | None = None) -> None:
         self.path = path or state_home() / APP_NAME / "history.jsonl"
+        self.lock_path = self.path.with_suffix(self.path.suffix + ".lock")
         self.appended = 0
 
     def add(self, command: str, status: int | None, duration: float, directory: str = "", place: str = "",
@@ -75,10 +77,10 @@ class HistoryStore:
                              finished_at if finished_at is not None else time.time(), directory, place)
         line = json.dumps(asdict(entry), ensure_ascii=False) + "\n"
         try:
-            self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            descriptor = os.open(self.path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
-            with os.fdopen(descriptor, "a", encoding="utf-8") as handle:
-                handle.write(line)
+            with exclusive_lock(self.lock_path):
+                descriptor = os.open(self.path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+                with os.fdopen(descriptor, "a", encoding="utf-8") as handle:
+                    handle.write(line)
         except OSError as error:
             LOGGER.warning("histórico de comandos não gravado: %s", error)
             return None
@@ -101,15 +103,17 @@ class HistoryStore:
 
     def trim(self) -> None:
         try:
-            lines = self.path.read_text(encoding="utf-8", errors="replace").splitlines()
+            with exclusive_lock(self.lock_path):
+                lines = self.path.read_text(encoding="utf-8", errors="replace").splitlines()
+                if len(lines) > MAX_ENTRIES:
+                    atomic_write_text(self.path, "\n".join(lines[-MAX_ENTRIES:]) + "\n", ".history.")
         except OSError:
             return
-        if len(lines) > MAX_ENTRIES:
-            atomic_write_text(self.path, "\n".join(lines[-MAX_ENTRIES:]) + "\n", ".history.")
 
     def clear(self) -> bool:
         try:
-            self.path.unlink(missing_ok=True)
+            with exclusive_lock(self.lock_path):
+                self.path.unlink(missing_ok=True)
             return True
         except OSError:
             return False

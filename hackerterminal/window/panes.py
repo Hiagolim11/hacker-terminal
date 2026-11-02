@@ -264,9 +264,14 @@ class PanesMixin:
         active = [pane for pane in panes if pane.has_active_process()]
         if not force and active and not self.confirm_close("Há processos ativos nesta aba."):
             return False
+        removed_labels = set()
         for pane in panes:
             pane.prepare_close()
-            self.tab_labels.pop(pane, None)
+            label = self.tab_labels.pop(pane, None)
+            if label is not None:
+                removed_labels.add(label)
+        for label in removed_labels:
+            self.tab_status_widgets.pop(label, None)
         page = self.notebook.page_num(frame)
         if page >= 0:
             self.notebook.remove_page(page)
@@ -282,7 +287,7 @@ class PanesMixin:
             # Viewers alone do not keep the window open.
             for viewer in list(self.viewers):
                 self.close_viewer(viewer)
-            self.session_store.clear()
+            self.session_coordinator.remove(self, save=True)
             self.closing_window = True
             self.close()
         return True

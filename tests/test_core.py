@@ -307,7 +307,7 @@ class ThemeTests(unittest.TestCase):
     def test_builtin_themes_are_valid_and_complete(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             manager = ThemeManager(Path(directory))
-            self.assertEqual(len(manager.all()), 22)  # 5 classic + 8 phosphor + red alert, 2 light, high contrast, 5 modern
+            self.assertEqual(len(manager.all()), 23)  # 5 classic + 8 phosphor + red alert, 3 light, high contrast, 5 modern
             self.assertFalse(manager.errors)
             for theme in manager.all():
                 self.assertEqual(len(theme.ansi), 16)
@@ -349,6 +349,7 @@ class RobustConfigurationTests(unittest.TestCase):
             expected = Preferences(
                 cursor_shape="ibeam",
                 cursor_blink="off",
+                cursor_pulse=True,
                 opacity=85,
                 bold_is_bright=True,
                 copy_on_select=True,

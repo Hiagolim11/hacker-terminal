@@ -335,6 +335,7 @@ class PreferencesDialog(Gtk.Dialog):
         terminal = FormPage()
         self.cursor_shape = choice_combo(self.CURSOR_SHAPES, preferences.cursor_shape)
         self.cursor_blink = choice_combo(self.CURSOR_BLINK, preferences.cursor_blink)
+        self.cursor_pulse = Gtk.Switch(active=preferences.cursor_pulse)
         self.scrollback = Gtk.SpinButton.new_with_range(1_000, 200_000, 1_000)
         self.scrollback.set_value(preferences.scrollback_lines)
         self.bold_is_bright = Gtk.Switch(active=preferences.bold_is_bright)
@@ -344,6 +345,7 @@ class PreferencesDialog(Gtk.Dialog):
         terminal.heading("Cursor")
         terminal.field("Formato", self.cursor_shape)
         terminal.field("Piscar", self.cursor_blink)
+        terminal.field("Pulso ao digitar", self.cursor_pulse)
         terminal.heading("Texto e seleção")
         terminal.field("Negrito usa cores claras", self.bold_is_bright)
         terminal.field("Copiar ao selecionar", self.copy_on_select)
@@ -841,6 +843,7 @@ class PreferencesDialog(Gtk.Dialog):
         target.background_fit = self.background_fit.get_active_id() or "cover"
         target.cursor_shape = self.cursor_shape.get_active_id() or "block"
         target.cursor_blink = self.cursor_blink.get_active_id() or "system"
+        target.cursor_pulse = self.cursor_pulse.get_active()
         target.bold_is_bright = self.bold_is_bright.get_active()
         target.copy_on_select = self.copy_on_select.get_active()
         target.scroll_on_output = self.scroll_on_output.get_active()

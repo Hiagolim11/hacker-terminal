@@ -190,6 +190,9 @@ window.dropdown {{ border-bottom: 2px solid {self.accent}; }}
 .pane-inactive .pane-name {{ color: {self.muted}; font-weight: 400; }}
 .tab-broadcast label {{ color: {self.danger}; font-weight: 700; }}
 .tab-done label {{ color: {self.accent}; font-weight: 700; }}
+.tab-success {{ color: {self.accent}; }}
+.tab-error {{ color: {self.danger}; }}
+.tab-running {{ color: {self.accent}; }}
 .tab-bell label {{ color: {self.danger}; font-weight: 700; }}
 .shortcut-label {{ font-family: monospace; color: {self.accent}; }}
 .shortcut-row {{ padding: 2px 0; }}

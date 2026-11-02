@@ -686,6 +686,8 @@ Na visualização, `Esc` (ou `Ctrl+Shift+W`) fecha a aba e volta ao terminal, e 
 > [!NOTE]
 > Para continuar leve, o visualizador mostra até **5.000 linhas × 200 colunas** e informa o total do arquivo — exato, estimado (≈) ou mínimo (“mais de”). Arquivos de planilha acima de 200 MB e formatos antigos como `.xls` são recusados com uma mensagem; use o botão de abrir no aplicativo padrão.
 
+Imagens acima de **64 megapixels** são recusadas antes da decodificação. As demais imagens grandes usam prévia estática de até 4.096 pixels no maior lado; alguns decodificadores ainda precisam de memória para a imagem original. GIF/ANI ficam limitados a 4.096 pixels por lado e 16 MB de arquivo. Para arquivos acima desses limites, use o botão de abrir no aplicativo padrão. Recarregar várias vezes mantém apenas um carregamento em andamento e uma solicitação pendente por aba.
+
 <details>
 <summary><b>Como funciona</b></summary>
 
@@ -783,6 +785,8 @@ Dentro do terminal também existe o comando **`ht-open ARQUIVO…`**, que abre i
 
 **Um processo para todas as janelas.** Com o Hacker Terminal já aberto, `hacker-terminal` (pelo menu, atalho ou terminal) entrega a nova janela ao processo existente antes mesmo de carregar o GTK: ela abre em ~0,4 s e três janelas usam ~150 MB, em vez de ~470 MB em três processos. As preferências mudam em todas as janelas de uma vez, e só a primeira restaura a sessão salva. Opções que mudam a aparência de uma janela (`--theme`, `--profile`, `--font`, `--font-size`, `--no-effects`, `--no-sound`, `--no-panel`) abrem um processo próprio, assim como `--separate` ou a variável `HACKER_TERMINAL_SEPARATE=1`. O terminal suspenso (`--dropdown`) também tem o seu.
 
+**Sessão compartilhada.** As abas das janelas normais do mesmo processo são salvas juntas, na ordem de abertura das janelas, respeitando o limite de 20 painéis. Ao reabrir, voltam em uma janela, com nomes e divisões preservados. Janelas com `-e` não apagam nem substituem essa sessão. Um processo separado aberto enquanto outro já gerencia `session.json` não restaura nem grava esse arquivo; o terminal suspenso mantém sua própria sessão. O primeiro processo que reserva o arquivo continua sendo seu responsável até encerrar.
+
 ---
 
 ## 🔧 Como funciona
@@ -815,12 +819,13 @@ A interface fica em dois pacotes. A janela (`window/`) é uma classe principal c
 | `sysmon.py`, `window/monitor.py` | Leitura de CPU, memória e GPU em `/proc` e `/sys`; resumo na barra de status, seção *Sistema* do painel e gráficos |
 | `dialogs/` | Preferências, editores (atalhos, temas, perfis), ações e `{campos}`, SSH, histórico, paleta e utilitários comuns |
 | `terminal.py` | Painel VTE: spawn do shell, integração (marcas de prompt), pesquisa, links, colagem segura, bell, zoom |
+| `output.py`, `storage.py` | Exportação e gravação da saída; escrita atômica privada e locks entre processos |
 | `themes.py` | Carrega e valida temas, gera o CSS do GTK, contraste WCAG, salva temas personalizados |
 | `shortcuts.py` | Lê, valida, casa e rotula atalhos (sem depender de display) |
 | `keysound.py`, `soundpacks/` | Síntese dos switches, pacotes gravados (os incluídos e os importados) e o mixer; o GStreamer só carrega quando um som toca |
 | `history.py`, `connections.py`, `passwords.py` | Histórico de comandos; conexões SSH e `~/.ssh/config`; senhas no chaveiro do sistema |
 | `documents.py`, `viewer.py`, `openserver.py`, `inline_image.py` | Planilhas, aba de visualização, socket do `ht-open` e imagens desenhadas na saída |
-| `config.py`, `profiles.py`, `session.py`, `actions.py` | Persistência atômica de preferências, perfis, sessão e ações |
+| `config.py`, `profiles.py`, `session.py`, `actions.py` | Persistência atômica de preferências, perfis e ações; coordenação da sessão entre janelas |
 | `effects.py` | Desenha a chuva digital e o visual CRT (brilho, curvatura, vinheta, ruído) por cima do VTE |
 | `dropdown.py`, `sandbox.py` | Geometria e atalho global do terminal suspenso; execução no host dentro do Flatpak |
 | `fonts.py`, `project.py`, `logs.py` | Detecção de Nerd Fonts, contexto Git/venv e log rotativo |
@@ -970,3 +975,25 @@ Distribuído sob a licença [MIT](LICENSE).
 <div align="center">
 <sub>Feito com GTK, VTE e muitas horas de terminal. ⌨️</sub>
 </div>
+
+### Fala para texto (opcional)
+
+O botão de microfone abre a transcrição local com Whisper **large-v3**, CPU/int8,
+com detecção de voz. Permite gravar 10 segundos pelo microfone padrão ou abrir
+um arquivo de áudio. O texto é editável e pode ser copiado; não é executado.
+Fechar a janela cancela o processo e libera o microfone.
+
+Instale `libportaudio2` pelo gerenciador do sistema. Para as dependências Python,
+use um ambiente virtual com acesso ao GTK do sistema:
+
+```sh
+python3 -m venv --system-site-packages .venv
+.venv/bin/pip install -r requirements-speech.txt
+.venv/bin/python hacker_terminal.py
+```
+
+O primeiro reconhecimento baixa vários GB do Hugging Face; requer internet,
+espaço e RAM disponíveis. Depois do download, o áudio é processado localmente.
+Em CPU a transcrição pode demorar. Não há garantia de precisão absoluta:
+revise nomes, números e comandos antes de usar. As dependências são opcionais
+para que sua ausência não impeça o terminal de iniciar.
