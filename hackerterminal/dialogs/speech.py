@@ -1,15 +1,17 @@
 """Dictation without a window: record, transcribe, type into the terminal.
 
-A single shortcut (or the microphone button) toggles it. The first press
-records from the microphone; the second stops recording, transcribes with a
-local Whisper model in an isolated subprocess, and feeds the text into the
-active pane (no Enter, so you can review it). The first time it runs, the
-optional dependencies are installed automatically in the background — there is
-nothing to install by hand. Progress shows in the status bar.
+One shortcut (or the microphone button) starts it: it records a few seconds
+from the microphone — a countdown shows in the status bar — then stops on its
+own (or earlier if you press the shortcut again), transcribes with a local
+Whisper model in an isolated subprocess, and feeds the text into the active
+pane (no Enter, so you can review it). There is no dialog. The first time it
+runs, the optional dependencies are checked and, if missing, installed in the
+background — nothing to install by hand, and the interface never freezes.
 """
 from __future__ import annotations
 
 import json
+import os
 import signal
 import subprocess
 import sys
@@ -21,17 +23,21 @@ from ..runtime import GLib
 
 PACKAGES = ["faster-whisper>=1.1,<2", "sounddevice>=0.5,<1", "numpy>=1.24,<3"]
 ROOT = str(Path(__file__).resolve().parents[2])
+MAX_SECONDS = max(2, int(os.environ.get("HT_SPEECH_SECONDS", "8") or 8))
 
 
 class SpeechController:
-    """Drives dictation for one window. State: idle, installing, recording, busy."""
+    """Drives dictation for one window. State: idle, preparing, recording, busy."""
 
     def __init__(self, window):
         self.window = window
         self.state = "idle"
+        self.ready = False
         self.process = None
         self.output = None
-        self.timer = 0
+        self.poll_timer = 0
+        self.count_timer = 0
+        self.remaining = 0
 
     # ------------------------------------------------------------------ status
     def say(self, text: str, transient: bool = False) -> None:
@@ -39,7 +45,7 @@ class SpeechController:
         if status is not None:
             status.set_text(text)
             if transient:
-                GLib.timeout_add(4000, self._clear, text)
+                GLib.timeout_add(5000, self._clear, text)
 
     def _clear(self, text: str) -> bool:
         status = getattr(self.window, "status", None)
@@ -47,51 +53,63 @@ class SpeechController:
             status.set_text("")
         return False
 
+    def _mark_button(self, active: bool) -> None:
+        button = getattr(self.window, "dictate_button", None)
+        if button is not None:
+            context = button.get_style_context()
+            (context.add_class if active else context.remove_class)("recording")
+
     # ------------------------------------------------------------------ toggle
     def toggle(self) -> None:
         if self.state == "recording":
             self.stop()
         elif self.state == "idle":
             self.begin()
-        # installing / busy: ignore until it settles
+        # preparing / busy: ignore until it settles
 
     def begin(self) -> None:
-        if self.have_deps():
+        if self.ready:
             self.start_recording()
             return
-        self.state = "installing"
-        self.say("Preparando reconhecimento de fala (primeira vez, pode demorar)…")
-        threading.Thread(target=self._install, daemon=True).start()
+        self.state = "preparing"
+        self.say("Preparando o ditado (primeira vez pode demorar)…")
+        threading.Thread(target=self._prepare, daemon=True).start()
 
     # ------------------------------------------------------------- dependencies
+    def _prepare(self) -> None:
+        ok = self.have_deps()
+        if not ok:
+            ok = self._install() and self.have_deps()
+        GLib.idle_add(self._prepared, ok)
+
+    def _prepared(self, ok: bool) -> bool:
+        if ok:
+            self.ready = True
+            self.start_recording()
+        else:
+            self.state = "idle"
+            self.say("Não consegui preparar o ditado (dependências de fala). Veja requirements-speech.txt.",
+                     transient=True)
+        return False
+
     @staticmethod
     def have_deps() -> bool:
         try:
             return subprocess.run(
                 [sys.executable, "-c", "import faster_whisper, sounddevice, numpy"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60,
             ).returncode == 0
         except (OSError, subprocess.SubprocessError):
             return False
 
-    def _install(self) -> None:
+    def _install(self) -> bool:
         try:
-            completed = subprocess.run(
+            return subprocess.run(
                 [sys.executable, "-m", "pip", "install", "--break-system-packages", *PACKAGES],
-                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=1800,
-            )
-            ok = completed.returncode == 0
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1800,
+            ).returncode == 0
         except (OSError, subprocess.SubprocessError):
-            ok = False
-        GLib.idle_add(self._installed, ok)
-
-    def _installed(self, ok: bool) -> bool:
-        self.state = "idle"
-        if ok and self.have_deps():
-            self.start_recording()
-        else:
-            self.say("Não consegui instalar as dependências de fala. Veja requirements-speech.txt.", transient=True)
-        return False
+            return False
 
     # --------------------------------------------------------------- recording
     def start_recording(self) -> None:
@@ -108,13 +126,32 @@ class SpeechController:
             self.say(f"Não foi possível gravar: {error}", transient=True)
             return
         self.state = "recording"
-        self.say("🎤 Ouvindo… pressione o atalho de novo para transcrever")
-        self.timer = GLib.timeout_add(200, self.poll)
+        self._mark_button(True)
+        self.remaining = MAX_SECONDS
+        self.say(f"🎤 Gravando… {self.remaining}s · Ctrl+Shift+M para parar")
+        self.poll_timer = GLib.timeout_add(150, self.poll)
+        self.count_timer = GLib.timeout_add(1000, self._tick)
+
+    def _tick(self) -> bool:
+        if self.state != "recording":
+            self.count_timer = 0
+            return False
+        self.remaining -= 1
+        if self.remaining <= 0:
+            self.count_timer = 0
+            self.stop()
+            return False
+        self.say(f"🎤 Gravando… {self.remaining}s · Ctrl+Shift+M para parar")
+        return True
 
     def stop(self) -> None:
         if self.process is None:
             return
         self.state = "busy"
+        self._mark_button(False)
+        if self.count_timer:
+            GLib.source_remove(self.count_timer)
+            self.count_timer = 0
         self.say("Transcrevendo…")
         if self.process.poll() is None:
             try:
@@ -124,11 +161,11 @@ class SpeechController:
 
     def poll(self) -> bool:
         if self.process is None:
-            self.timer = 0
+            self.poll_timer = 0
             return False
         if self.process.poll() is None:
-            return True  # keep waiting (recording or transcribing)
-        self.timer = 0
+            return True  # still recording or transcribing
+        self.poll_timer = 0
         self._finish()
         return False
 
@@ -139,14 +176,15 @@ class SpeechController:
             self.output.seek(0)
             result = json.loads(self.output.read().decode("utf-8") or "{}")
             if result.get("error") == "missing-deps":
-                message = "Faltam dependências de fala; tentarei instalar no próximo uso."
+                self.ready = False
+                message = "Faltam dependências de fala; serão instaladas no próximo uso."
             elif "error" in result:
                 message = result["error"]
             else:
                 text = (result.get("text") or "").strip()
-                message = "" if text else "Nenhuma fala detectada."
+                message = "" if text else "Nenhuma fala detectada — fale mais perto do microfone."
         except (ValueError, OSError):
-            message = "Falha ao transcrever. Verifique memória e dependências."
+            message = "Falha ao transcrever. Verifique o microfone e a memória."
         finally:
             if self.output is not None:
                 self.output.close()
@@ -167,9 +205,11 @@ class SpeechController:
 
     # ------------------------------------------------------------------ cleanup
     def cleanup(self, *_) -> None:
-        if self.timer:
-            GLib.source_remove(self.timer)
-            self.timer = 0
+        for attribute in ("poll_timer", "count_timer"):
+            source = getattr(self, attribute, 0)
+            if source:
+                GLib.source_remove(source)
+                setattr(self, attribute, 0)
         if self.process is not None:
             if self.process.poll() is None:
                 self.process.kill()

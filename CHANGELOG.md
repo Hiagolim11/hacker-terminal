@@ -4,7 +4,7 @@ Este projeto segue [Semantic Versioning](https://semver.org/).
 
 ## 0.22.0
 
-- **Ditar: fala para texto no terminal** (`Ctrl+Shift+M`, ou o botão 🎤): a primeira vez grava do microfone; a segunda para, transcreve com um Whisper **local** e **escreve o texto no painel ativo** — sem Enter, para você revisar. Sem caixa de diálogo; o andamento aparece na barra de status. As dependências (faster-whisper, sounddevice, numpy) são **instaladas sozinhas no primeiro uso** — nada de `pip` manual. Usa um modelo pequeno e rápido por padrão (`HT_SPEECH_MODEL` troca); o reconhecedor roda isolado num subprocesso, sem travar a interface.
+- **Ditar: fala para texto no terminal** (`Ctrl+Shift+M`, ou o botão 🎤): um toque grava alguns segundos do microfone (com contagem na barra de status) e para sozinho — ou pressione de novo para parar antes. O que você falou é transcrito por um Whisper **local** e **escrito no painel ativo**, sem Enter, para você revisar. Sem caixa de diálogo. As dependências (faster-whisper, sounddevice, numpy) são **verificadas e instaladas sozinhas no primeiro uso, em segundo plano** — nada de `pip` manual e a interface não trava. Modelo pequeno e rápido por padrão (`HT_SPEECH_MODEL` troca; `HT_SPEECH_SECONDS` muda a duração); o reconhecedor roda isolado num subprocesso.
 
 - **Ocultar a barra de título** (a do topo com fechar, minimizar e maximizar): `Ctrl+Shift+J` mostra ou esconde, e há um interruptor em *Preferências → Geral → Barra de título*. Esconder também oculta os botões do app no cabeçalho; o estado é salvo.
 

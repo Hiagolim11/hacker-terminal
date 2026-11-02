@@ -172,6 +172,7 @@ class HackerTerminal(ViewerMixin, CommandsMixin, OutputMixin, DropdownMixin, Ssh
             start.pack_start(self.make_header_button(icon_name, fallback, tooltip, action), False, False, 0)
         speech = header_button("audio-input-microphone-symbolic", "🎤", "Ditar: fala para texto (Ctrl+Shift+M)")
         speech.connect("clicked", lambda *_: self.dictate())
+        self.dictate_button = speech
         start.pack_start(speech, False, False, 0)
         self.header.pack_start(start)
         end = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)

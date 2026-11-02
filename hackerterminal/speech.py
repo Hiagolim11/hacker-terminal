@@ -13,17 +13,20 @@ import argparse
 import json
 import os
 
-DEFAULT_MODEL = os.environ.get("HT_SPEECH_MODEL", "small")
+DEFAULT_MODEL = os.environ.get("HT_SPEECH_MODEL", "base")
 SAMPLE_RATE = 16000
 MAX_SECONDS = 120  # safety cap: never record longer than this
 
 
-def transcribe(source, model_factory=None, model_name=DEFAULT_MODEL):
+def transcribe(source, model_factory=None, model_name=DEFAULT_MODEL, cpu_threads=0):
     if model_factory is None:
         from faster_whisper import WhisperModel
         model_factory = WhisperModel
-    model = model_factory(model_name, device="cpu", compute_type="int8")
-    segments, _ = model.transcribe(source, beam_size=5, vad_filter=True,
+    # greedy decoding (beam_size=1) and every core: short dictation on a CPU
+    # must feel instant, not take minutes.
+    threads = cpu_threads or os.cpu_count() or 4
+    model = model_factory(model_name, device="cpu", compute_type="int8", cpu_threads=threads)
+    segments, _ = model.transcribe(source, beam_size=1, vad_filter=True,
                                    condition_on_previous_text=False, task="transcribe")
     return " ".join(segment.text.strip() for segment in segments if segment.text.strip())
 
